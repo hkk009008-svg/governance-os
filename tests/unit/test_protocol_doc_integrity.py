@@ -24,17 +24,28 @@ def test_codex_subagents_never_inherit_seat_authority():
     assert "never publish a formal verdict or live-role event" in compact
     assert "unless explicitly delegated" not in compact
 
+    for path in (
+        ".codex/agents/protocol-director.toml",
+        ".codex/agents/protocol-operator.toml",
+        ".codex/agents/README.md",
+    ):
+        agent = _compact(_read(path)).casefold()
+        assert "assistant" in agent, path
+        assert "cannot publish" in agent, path
+        assert "temporary author" not in agent, path
+        assert "temporary independent reviewer" not in agent, path
+
 
 def test_every_provider_entrypoint_points_to_the_canonical_policy_model():
     """One executable policy source, named by every side's adapter.
 
     Providers differ in runtime mechanics, not in policy. Each adapter must
-    name `scripts/codex_protocol_model.py` as the canonical source rather than
+    name `pipeline/codex_protocol_model.py` as the canonical source rather than
     restating identity, ownership, risk, or external-effect rules in prose that
     can drift. The assertion is on the pointer target, not on one sentence, so
     an adapter may word its own hand-off naturally.
     """
-    pointer = "scripts/codex_protocol_model.py"
+    pointer = "pipeline/codex_protocol_model.py"
     for path in (
         "AGENTS.md",
         ".agents/skills/four-seat-protocol/SKILL.md",
@@ -48,18 +59,18 @@ def test_every_provider_entrypoint_points_to_the_canonical_policy_model():
 def test_work_mode_docs_point_to_the_executable_profiles_and_keep_explore_light():
     work_modes = _compact(_read("docs/protocol/work-modes.md"))
 
-    assert "scripts/codex_protocol_model.py" in work_modes
+    assert "pipeline/codex_protocol_model.py" in work_modes
     assert "work_profile_for" in work_modes
     assert "work mode is separate from review risk" in work_modes.lower()
     assert "one campaign brief" in work_modes.lower()
     assert "no formal review inside explore" in work_modes.lower()
-    assert "provider launch remains separately authorized" in work_modes.lower()
+    assert "only prints" in work_modes.lower()
+    assert "starts no model" in work_modes.lower()
 
     for path in (
         "AGENTS.md",
         "CLAUDE.md",
-        ".agents/skills/four-seat-protocol/SKILL.md",
-        ".claude/skills/four-seat-protocol/SKILL.md",
+        "docs/protocol/codex/continuation.md",
         "docs/protocol/claude/continuation.md",
     ):
         text = _compact(_read(path))
@@ -81,7 +92,8 @@ def test_independence_first_doc_tracks_mechanized_gate_and_remaining_followup():
     assert "owner explicitly assesses plausible abuse classes" in compact
     assert "Early independent review is encouraged" in compact
     assert "no universal preflight CLEAR" in compact
-    assert "distinct seat and different system-visible model" in compact
+    assert "non-author reviewer from a distinct desktop member" in compact
+    assert "different system-visible model family" in compact
     assert "actual commit or range" in compact
     assert "live receipt-backed advisory review/reconciliation" not in text
     assert "lane-v-report/v2" not in text
@@ -110,13 +122,16 @@ def test_pr_template_matches_current_governance_repo_surfaces():
     assert "docs/STRATEGIC_REVIEW-2026-05-24.md" not in text
 
 
-def test_pipeline_docs_do_not_launch_live_seats_from_content():
+def test_pipeline_docs_route_apps_without_provider_or_standing_seat_launchers():
     text = _read("coordination/README.md")
 
     assert "/Users/" not in text
     assert "absolute/path/to/Content" not in text
-    assert 'PIPELINE_ROOT="$(git rev-parse --show-toplevel)"' in text
-    assert 'cd "$PIPELINE_ROOT"' in text
+    assert "codex-seat" not in text
+    assert "claude-seat" not in text
+    assert "provider launch" not in text.casefold()
+    assert "pipeline-team" in text
+    assert "team_status" in text
 
 
 def test_incident_log_exists_for_emergency_protocol():
@@ -124,34 +139,6 @@ def test_incident_log_exists_for_emergency_protocol():
 
     assert "# Incident Log" in text
     assert "Emergency protocol requires" in text
-
-
-def test_threeway_docs_do_not_claim_local_cutover_when_refs_absent():
-    docs = {
-        path: _read(path)
-        for path in (
-            "docs/protocol/threeway/CODEX-ADOPTION.md",
-            "docs/protocol/threeway/README.md",
-            "docs/protocol/threeway/UNIFIED-OPERATING-DOCTRINE.md",
-        )
-    }
-
-    for text in docs.values():
-        compact = _compact(text)
-        assert "git for-each-ref refs/threeway/" in compact
-        assert "legacy mailbox remains authoritative for local work" in compact
-        assert "CUT OVER (2026-06-22)" not in text
-        assert "cutover WAS executed" not in text
-
-
-def test_threeway_truth_links_resolve_to_existing_files():
-    readme = _read("docs/protocol/threeway/README.md")
-    doctrine = _read("docs/protocol/threeway/UNIFIED-OPERATING-DOCTRINE.md")
-
-    assert "docs/superpowers/specs/2026-06-19-cross-provider-seat-topology-design.md" not in readme
-    assert "docs/superpowers/plans/2026-06-20-cross-provider-seat-topology-slice2.5-legacy-bus-migration.md" not in readme
-    assert "docs/protocol/threeway/CODEX-ADOPTION.md" in readme
-    assert "docs/protocol/threeway/CODEX-ADOPTION.md" in doctrine
 
 
 def test_task24_capacity_packets_reflect_operator_go_and_pair_b_preflight():
@@ -196,6 +183,11 @@ def test_operator_phase_taxonomy_uses_current_codex_triggers():
         text = _read(path)
         compact = _compact(text)
 
-        assert "committed verify-request" in compact.lower()
+        assert "exact committed range" in compact.lower()
+        assert all(verdict in text for verdict in ("GO", "NITS", "FAIL"))
+        assert (
+            "non-author" in compact.lower()
+            or "never reviews a range it authored" in compact.lower()
+        )
         assert "in-chat \"Dispatching X\" narration" not in text
         assert "implicit git-log poll" not in text

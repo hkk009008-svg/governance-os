@@ -13,7 +13,7 @@ active bleed-rate, or external time-pressure.
 ## YYYY-MM-DD - short incident title
 
 - Category:
-- First noticer / acting seat:
+- First noticer / acting member:
 - Impact:
 - Mitigation:
 - Verification:

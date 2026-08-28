@@ -1,30 +1,26 @@
-# Daily Runbook
+# Daily desktop-team runbook
 
-Use only the branch of this loop that the task needs.
+1. Open the repository in Codex, Claude, or AGY. Run `bin/pipeline preflight`
+   only when setup changed or the team tools fail.
+2. Read the user task, inspect fresh Git status/diff, call `team_status`, and
+   read addressed messages with `team_wait`.
+3. Execute the simplest sufficient work. Use all three members freely for
+   reasoning, direction, implementation, testing, and challenge. Parallelize
+   read-only or nonoverlapping work; serialize shared-file writes.
+4. Send bounded requests or results with `team_send`. Queued is not
+   acknowledged; acknowledged is not a substantive reply. No message grants
+   authority.
+5. Test proportionately. Only at a material or high-risk boundary, temporarily
+   name an author and a non-author Codex or Claude reviewer for the exact range.
+   Hear and disposition AGY findings, but do not use AGY as the sole formal
+   verdict.
+6. Before push, merge, release, paid spend, live-data mutation, or destruction,
+   confirm exact current user/task authority. At a real transfer or wrap, leave
+   one concise checkpoint; otherwise Git, tests, and desktop task history are
+   sufficient.
 
-1. Understand the requested outcome and hard boundaries.
-2. For local change, refresh the native worktree and affected-path history.
-3. Inspect definitions, writes, callers, and sibling paths before changing
-   behavior.
-4. Add a failing behavior test when feasible, implement the narrow fix, and run
-   focused verification.
-5. Classify the actual diff:
-   - ordinary local work stops after focused verification;
-   - material behavior gets non-author exact-range review;
-   - high-risk control additionally gets different-model-family review and
-     abuse-class analysis;
-   - external effects wait for exact live authorization.
-6. Compare the final diff with the requested scope and report remaining
-   unknowns truthfully.
-
-Run `scripts/status.py snapshot <seat>` only when current protocol state matters
-and only after explicit role assignment. Mailbox events, handoffs, full smoke,
-and coordination checks are triggered tools, not daily rituals. Historical
-capacity packets are not a live scheduler.
-
-`GO` accepts its bound range; it never authorizes push or another effect.
-Classify documentation and tests by actual behavior/risk, not filename.
-
-The policy kernel is `scripts/codex_protocol_model.py`; formal exact-range
-review is `scripts/compact_pair_loop.py`; validated serialized event/cursor
-writes are `scripts/mailbox_writer.py` through the fixed wrappers.
+Legacy mailbox conversation, cursors, seats, and peer receipts are history.
+The fixed mailbox writer is reserved for a risk-required formal artifact, real
+transfer checkpoint, or governed learning-candidate/disposition record, never
+routine chat. Terminal commands implement and verify repository work; they
+never launch a model provider.

@@ -1,8 +1,8 @@
-personality = "friendly"
+# Project-scoped Codex app configuration.  The app and CLI share this project
+# config in a trusted checkout; Pipeline contributes only the team transport.
+# Personal model, personality, sandbox, approval, and credentials stay in user
+# configuration.
 
-[mcp_servers.claude_task_connector]
-command = "coordination/bin/claude-task-connector"
-args = ["mcp"]
-cwd = "."
-startup_timeout_sec = 30
-tool_timeout_sec = 310
+[mcp_servers.pipeline-team]
+command = "./bin/pipeline"
+args = ["team", "serve", "--member", "codex"]

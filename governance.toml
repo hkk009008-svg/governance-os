@@ -4,22 +4,13 @@
 # editing Python constants. evidence-ledger remains the DEFAULT target
 # (ADR-008 continuity); additional works register a [targets.<name>] table.
 #
-# Active-target resolution order (scripts/target_binding.py):
+# Active-target resolution order (pipeline/target_binding.py):
 #   CLI --target  >  GOVERNANCE_TARGET env  >  [binding].default_target
 # Local-checkout override for the selected target: GOVERNANCE_TARGET_PATH env.
 # Missing/unknown/ambiguous binding fails closed with a corrective message.
 
 [kernel]
 repository = "hkk009008-svg/governance-os"
-
-[coordination]
-# The single declarative answer to "which coordination transport is
-# authoritative". "mailbox" short-circuits every signed-bus probe: an
-# unconsulted bus cannot be confused with an empty one. Cutting over to the
-# signed bus is an explicit reviewed transport change ("signed-bus") plus
-# live refs — never an inferred state. Consumers fail closed on a missing or
-# unknown value (scripts/bus_unread.py::coordination_transport).
-transport = "mailbox"
 
 [binding]
 default_target = "evidence-ledger"

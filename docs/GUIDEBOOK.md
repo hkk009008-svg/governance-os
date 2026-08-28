@@ -1,265 +1,151 @@
-# Pipeline guidebook — using this repository
+# Pipeline guidebook
 
-> Task-oriented walkthrough, not an authority source. `AGENTS.md` is the
-> binding contract, `ARCHITECTURE.md` records verified facts, and executable
-> code wins when this guide drifts — fix the guide in the same change that
-> exposes the drift. The complete reference map (every file, flow, and
-> failure state) is `docs/REPOSITORY-MANUAL.md`; this guide walks the paths
-> you actually take, in the order you take them.
+This is the practical guide for using Codex, Claude, and AGY as one desktop-app
+engineering team. The short rule is: communicate directly, use the best
+available strength, keep repository work simple, and add formal governance only
+where actual risk requires it.
 
-## 1. What you are using
+## Meet the team
 
-Pipeline is a governance kernel, not the product. It keeps the minimum
-durable evidence that multi-provider AI work stays honest: committed mailbox
-events, exact-range review, checkpoints for long-horizon work, and external
-effects that each need their own authorization. Product code lives in
-registered target repositories (`governance.toml`); this repository holds the
-protocol machinery and its own tests.
+Every member may reason, direct, implement, test, and challenge. Capability
+labels help routing; they do not reserve work.
 
-Almost everything you do here is one of six walks: an ordinary change, a
-formal review, a mailbox action, a long-horizon campaign, an external
-effect, or landing work on `main`. Each has a section below.
-
-## 2. First session in a fresh checkout
-
-Each checkout (the main clone and every linked seat worktree) needs its own
-virtual environment — `.venv/` is gitignored and does not travel:
-
-```bash
-python3 -m venv .venv
-.venv/bin/pip install -r requirements-dev.txt
-```
-
-Then orient. One command is the whole startup ritual:
-
-```bash
-env -u GIT_INDEX_FILE .venv/bin/python scripts/status.py snapshot
-```
-
-Reading the snapshot:
-
-- `Git:` — commit, branch, dirty count. Confirm you are where you think.
-- `Unread:` — per-seat unread mailbox counts. A large number is normal
-  history, not orientation debt; nothing obliges you to drain it.
-- `Request:` — the newest pending verify-request, if any, and its assigned
-  reviewer.
-- `Checkpoint:` — the newest committed campaign checkpoint (`none` when no
-  campaign is open, `unavailable` when the projection cannot be read).
-  Resume = this snapshot plus that checkpoint; see section 7.
-- `Gate: PASS/WARN/FAIL` — FAIL names a structural blocker; WARN with
-  grandfathered immutable-history advisories is the normal steady state.
-- `Next:` — the one suggested next action.
-
-Deeper diagnostics when something looks wrong:
-`.venv/bin/python scripts/check_coordination.py`.
-
-## 3. Sixty seconds of classification before you start
-
-Three independent questions shape every task (the closed decision surfaces
-live in `AGENTS.md`, `docs/protocol/work-modes.md`, and
-`scripts/codex_protocol_model.py`):
-
-| You are about to… | Walk | Ceremony required |
+| Member | Strong starting point | Compensating practice |
 |---|---|---|
-| Read code, answer a question | just read | None. Reads are always free. |
-| Fix docs, tests, or local behavior reversibly | section 4 | None — no seat, no mode, no mailbox event. |
-| Change behavior somebody relies on | section 4, then 5 | Failing test first; non-author review of the exact range if material. |
-| Touch hook policy, fixed writers, launchers, skills, CI, review machinery | section 5 | High-risk compact pair: different model family plus abuse-class analysis. |
-| Publish or consume mailbox state | section 6 | Assigned sender and publication authority. |
-| Start, pause, or resume a multi-session campaign | section 7 | `explore` mode at the boundary; checkpoint events. |
-| Push, merge, lock, consume a cursor, launch a provider, spend money | section 8 | One separate exact approval per effect, every time. |
+| Codex | workspace integration, worktrees, parallel orchestration, sustained execution | refresh exact task/diff after parallel branches; seek another family for high-risk review |
+| Claude | large-context synthesis, architecture, independent diff and visual review | turn analysis into a bounded change and executable evidence before expanding scope |
+| AGY | rapid mapping/debugging, browser and artifact work, premise/evasion attacks, multi-model advice | validate returned facts, commands, and diffs locally; do not treat advice as formal acceptance |
 
-Two rules that prevent most over-ceremony: ordinary work declares no work
-mode (a mode object exists only at a campaign boundary), and no seat is
-needed merely because an edit exists. Roles exist only on explicit
-assignment.
+AGY is an interactive team member, not a disposable helper. Hear and answer its
+material findings. Its only governance limitation is that it cannot be the sole
+independent formal verdict or authority source.
 
-## 4. The ordinary change walk
+## Start a task
 
-The default path for direct, reversible, repository-local work:
+1. Read the user's current objective and constraints.
+2. Inspect the repository branch, status, relevant diff, and tests.
+3. Call `team_status` once.
+4. Read pending addressed messages with `team_wait`.
+5. Choose the smallest change or investigation that can settle the question.
 
-```bash
-# 1. Fresh eyes on the exact state
-git status --short --branch && git log --oneline -5
+Do not begin by allocating seats, publishing events, replaying old mail, or
+writing a plan when the accepted task is already clear.
 
-# 2. Inspect before editing: definitions, callers, siblings
-rg -n "the_symbol_you_are_changing" scripts/ tests/
+## Ask another member
 
-# 3. Behavior change? Write the failing test first
-env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_the_area.py -q
+Use `team_send` with one concrete request. A useful message includes:
 
-# 4. Implement the smallest change, then focused verification, fresh
-env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_the_area.py -q
+- the objective;
+- the paths, commit, output, or claim to inspect;
+- the form of response needed;
+- whether the requester can continue independently.
 
-# 5. Inspect the exact diff before committing; stage explicit paths
-git diff
-git add scripts/the_file.py tests/unit/test_the_area.py
-git commit -m "fix(area): what and why"
+Use `recipient: all` only for information or a question that truly concerns all
+members. Use `reply_to` for a response so acknowledgement and reply state remain easy
+to inspect.
+
+Remember the state ladder:
+
+```text
+queued != returned != acknowledged != replied != substantively answered
 ```
 
-Docs-only changes: run `.venv/bin/python scripts/check_doc_claims.py` and
-`.venv/bin/python scripts/check_placeholders.py` instead of pytest. Run the
-completion aggregate `.venv/bin/python scripts/governance_verify_all.py`
-only when the change touches governance/runtime topology or an
-`ARCHITECTURE.md` invariant — it is not a per-edit ritual.
+If the answer blocks work, wait with `team_wait` at a natural boundary. If it
+does not, continue independent work and check later. Never treat a timeout or
+activity timestamp as agreement, refusal, liveness, or authority.
 
-Stop here for ordinary work. Committing locally is the end of the walk;
-landing on `main` is section 9.
+## Split implementation
 
-## 5. Formal review: the compact pair
+Split when the pieces are genuinely independent:
 
-Triggered by risk, not by habit: material behavior changes need non-author
-review of the exact committed range; authority surfaces (hook policy, fixed
-writers, launchers, executable composition, trust-granting schemas) also
-need a different model family and an explicit abuse-class assessment.
-Classification criteria: `docs/protocol/agents/risk-classes.md`.
+- read-only mapping of different subsystems;
+- independent review or premise attacks;
+- changes to nonoverlapping modules;
+- platform-specific checks that produce comparable evidence.
 
-1. Commit the candidate range. Note base and head.
-2. Compose the request body (validates identities, range, and risk):
+Name one owner per path and one integrator. Do not assign concurrent writers to
+the same file, database, lock, build output, or other mutable resource. When a
+design choice affects several pieces, settle it before parallel writes.
 
-```bash
-env -u GIT_INDEX_FILE .venv/bin/python scripts/compact_pair_loop.py \
-  compose-request --repo-root . --author director --author-model <model-id> \
-  --operator operator --risk-class material-behavior \
-  --base <base-rev> --head HEAD <<< "One-paragraph outcome statement."
-```
+Parallelism should remove elapsed time, not create reconciliation work. A
+single direct implementation is preferable when it will finish faster and be
+easier to verify.
 
-   High-risk adds `--risk-class high-risk-control` and at least one
-   `--abuse-class "…"` bullet.
-3. Publish it as a `verify-request` event (section 6) and commit the staged
-   event path.
-4. The assigned Operator reviews the exact committed range and independently
-   verifies the requested claims.
-5. The Operator publishes one `verification-report`: GO, NITS, or FAIL,
-   bound to that request and range. Authors never review their own work.
-6. FAIL remediation is a new range and a new request with supersession or
-   remediation binding — the old report is never rewritten.
+## Build and test
 
-A GO accepts the bound range and nothing else. It does not authorize push,
-merge, or any other effect.
+For a behavior change, start with a failing behavior test when feasible. If it
+is not feasible, retain a characterization or state why. After unexpected
+failure, find root cause before modifying behavior.
 
-## 6. The mailbox
+Use focused checks while iterating. Inspect the exact diff. Run one final test
+pass proportionate to the changed surface and report exactly what ran. A green
+suite does not establish app liveness, message substance, provider identity,
+or external authority.
 
-Durable coordination state is committed files under
-`coordination/mailbox/sent/`, named
-`<UTC-stamp>-<from>-to-<to>-<kind>.md`. The accepted kinds are the registry
-`coordination/mailbox/kinds.txt`. Reading is free — open the files or use
-`git log -- coordination/mailbox/sent/`.
+## Review at the risk boundary
 
-Writing goes through fixed front doors only:
+Ordinary local work needs no formal roles. For a material behavior change,
+temporarily name the candidate owner `author` and a non-author Codex or Claude
+member `reviewer` for the exact committed range. For a high-risk control, the
+reviewer must also be from a different model family and assess plausible abuse
+and evasion classes.
 
-```bash
-# Publish (body on stdin; stages the event, never commits — you commit it)
-coordination/bin/send-event <from> <to> <kind> <subject...>
+The reviewer reads the actual diff and relevant code, not only a summary. AGY
+may challenge assumptions, run tests, or review evidence; material findings are
+explicitly addressed. AGY cannot be the only formal GO/NITS/FAIL source. End
+the author/reviewer responsibilities when the range is resolved.
 
-# Advance your own seat cursor (assigned pair seats only)
-coordination/bin/consume-events <seat>
-```
+## Perform an external effect
 
-Rules that surprise people: never write into `sent/` directly and never call
-`scripts/mailbox_writer.py` yourself — both are denied by policy;
-publication requires an assigned sender (a readiness session cannot lawfully
-publish, and even asking `send-event` for its help text is denied there —
-read the script header for usage); coordinators observe without consuming;
-the writer stages but the commit is your separate, deliberate act.
+Push, merge, release, paid spend, live-data mutation, and destructive
+operations are not implied by implementation authority. Before any one of
+them, confirm the current task or user explicitly names:
 
-## 7. Long-horizon campaigns: checkpoints and resume
+- who will execute;
+- the target;
+- the effect;
+- the allowed scope.
 
-Chat memory does not survive compaction, transfer, or interruption. Durable
-state does. At a real boundary — ownership transfer, interruption,
-pre-compaction, campaign wrap — publish one checkpoint:
+Ask if any field is missing. Team messages, config, tests, reports, and old
+approvals do not fill it.
 
-```bash
-env -u GIT_INDEX_FILE .venv/bin/python scripts/draft_checkpoint.py \
-  --scratch .pytest-verify-tmp/ckpt --checkpoint <campaign-slug> \
-  --boundary wrap --objective "…" --accepted-scope "…" --owner <seat> \
-  --base <40-hex-base> --verification-status "what ran, fresh" \
-  --blockers none --next-action "the one next executable action"
-```
+## Transfer or finish
 
-The tool drafts to scratch and never publishes; review the draft, then
-publish it as a `findings` event via `send-event` (section 6). A malformed
-checkpoint is refused at publication. The required `Lessons:` field routes
-lessons toward learning-candidates; `none-considered` is always a valid
-answer after actually considering it — there is no quota.
+Git, executed tests, and desktop task history are the normal continuation
+record. For a real ownership transfer, interruption, compaction, or wrap where
+someone else must resume, leave one concise checkpoint:
 
-Resuming is two reads, not an archaeology dig: run the snapshot (section 2)
-and open the checkpoint it names on the `Checkpoint:` line. Recalled chat
-memory stays advisory; current Git and committed event bodies outrank it.
+- objective and accepted scope;
+- current owner;
+- base/head and relevant paths;
+- evidence and verification status;
+- unresolved blockers;
+- next executable action.
 
-## 8. External effects
+Do not create a checkpoint for every turn or maintain parallel handoff chains.
+Legacy mailbox conversation, cursors, seats, capacity packets, and peer
+receipts are historical evidence. Use the fixed mailbox writer only when a
+risk-required formal review artifact, a real transfer/checkpoint `findings`
+event, or the governed learning-candidate/disposition lifecycle must persist
+beyond the app task; never for routine chat.
 
-Push, merge, fetch/pull, lock claim/release, cursor consumption, provider
-launch, paid spend, live-data mutation: each needs separate exact authority
-for the executor, target, effect, and scope, at point of use. No role, GO
-verdict, mode, or schema ever grants one. Transport ambiguity (a push that
-may or may not have landed) is reported, never converted into success.
+## When something goes wrong
 
-## 9. Landing work on main
+- Team tools missing: confirm the app opened this repository; run
+  `bin/pipeline preflight`.
+- Wrong member label: repair its checked-in MCP config; do not override the
+  label in a prompt or environment variable. The label is not attestation.
+- AGY tool missing or repeatedly asks: reload the repository's `pipeline-team`
+  workspace plugin, confirm its `plugin.json` manifest and `mcp_config.json`,
+  and explicitly allow `mcp(pipeline-team/*)` in Antigravity.
+- Message remains queued: the recipient has not received it through
+  `team_wait`; continue independent work or wait.
+- Advice conflicts with code: inspect current code and execute the deciding
+  check. Repository truth outranks narration.
+- Members disagree: compare premises and evidence against the user objective.
+  Ask the user only when a real scope, product, or effect choice remains.
+- Legacy artifacts disagree with current task: retain them as history and use
+  current Git/task state and active doctrine.
 
-Current practice is topic branches and pull requests:
-
-```bash
-git switch -c codex/<slug>           # from the current tip
-git add <explicit paths> && git commit
-git push -u origin codex/<slug>      # separate approved effect
-gh pr create --title "…" --body "…"
-```
-
-CI runs smoke (`governance_verify_all.py`), the full pytest matrix on
-Python 3.11–3.13, a hermetic Linux job, advisory lint, and — only when the
-range touches an authority surface (`AUTHORITY_SURFACES` in
-`scripts/ci_admission_gate.py`: broad prefixes including `scripts/`,
-`docs/protocol/`, the skill trees, CI itself, `AGENTS.md`, `README.md`) —
-a risk-aware admission job that requires committed GO/NITS high-risk
-compact-pair coverage of those commits. Documentation outside those
-prefixes lands without it. Green gates prove what they executed and grant
-no authority; merging is the owner's separate effect.
-
-## 10. Memory, lessons, and skills
-
-The learning plane is git-native and advisory
-(`docs/protocol/learning/contract.md` is the contract):
-
-- A lesson becomes a draft via `scripts/learning_extract.py` (scratch-only,
-  evidence triggers only — user correction, contradiction, recurrence,
-  measured improvement), then a `learning-candidate` mailbox event, then a
-  non-producer disposition (`accepted`/`declined`/`expired`).
-- Promotion into canonical state (including any skill edit) is an ordinary
-  reviewed compact-pair change. There is no autonomous skill write.
-- Skills live in `.agents/skills/<name>/SKILL.md` (canonical) with Claude
-  discovery stubs in `.claude/skills/`. Authoring one? Load
-  `.agents/skills/writing-skills/SKILL.md` first — evaluation pack under
-  `tests/skill_packs/` before body.
-- After using a named skill, append one advisory `skill-use` row to
-  `logs/learning/outcomes.jsonl` (schema:
-  `docs/protocol/learning/skill-use.md`). Counts never bind lifecycle.
-
-## 11. When something refuses
-
-| Symptom | Meaning | Do |
-|---|---|---|
-| `send-event` refuses or is denied outright | Unassigned sender, unknown kind, malformed body — or readiness posture | Check seat assignment and `kinds.txt`; publication needs an assigned seat |
-| Snapshot `Gate: FAIL` | Structural coordination blocker | `scripts/check_coordination.py` names it; repair before other work |
-| Snapshot advisories about grandfathered history | Known immutable-history exceptions | Normal steady state; not yours to fix |
-| Admission gate red on a PR | Range touches an authority-surface prefix | Attach compact-pair review coverage, or the owner decides at merge |
-| A gate is green but the claim feels unproved | Gates prove only what they execute | Say what was not proved; see `probe-a-claim` skill before writing "verified" |
-
-Deeper: the troubleshooting table in `OPERATIONS.md` and the failure-model
-table in `docs/REPOSITORY-MANUAL.md`.
-
-## 12. Which document, when
-
-| Genre | Document |
-|---|---|
-| Binding agent contract | `AGENTS.md` |
-| This walkthrough | `docs/GUIDEBOOK.md` |
-| Complete reference map | `docs/REPOSITORY-MANUAL.md` |
-| Commands and troubleshooting | `OPERATIONS.md` |
-| The daily loop, compressed | `RUNBOOK-DAILY.md` |
-| Verified system facts | `ARCHITECTURE.md` |
-| User-principal intent | `docs/PROGRAM-MANUAL.md` |
-| Decision history | `DECISIONS.md` |
-| Work phases | `docs/protocol/work-modes.md` |
-| Desktop app setup | `docs/protocol/app-quickstart.md` |
-| Provider mechanics | `docs/protocol/{codex,claude}/` |
+No recovery path launches a headless model provider. Terminal commands remain
+for reproducible repository work and preflight.

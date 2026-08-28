@@ -1549,3 +1549,102 @@ self-approve and does not publish mailbox events.
 Normative additions: `docs/protocol/learning/contract.md` §5,
 `docs/protocol/learning/skill-use.md`. Plan:
 `docs/superpowers/plans/2026-08-12-memory-skill-evolution-plan.md`.
+
+## ADR-069: Make the three desktop apps the active engineering team (2026-08-27)
+
+**Status:** Accepted (user-directed: make Codex, Claude, and AGY desktop apps
+the exclusive interactive engineering harness; enable free co-direction and
+communication; prefer simple direct solutions; remove stale CLI and ceremony)
+
+**Number assignment.** Re-grepped before this entry per ADR-035. `ADR-069` had
+no prior decision entry or reservation. This entry consumes the number.
+
+**Context.** The active repository doctrine still described two terminal-only
+participants, one-shot child-process peer launches, committed peer receipts,
+mailbox-first coordination, and remnants of a standing seat system. That model
+contradicted the requested app workflow and duplicated capabilities now
+available natively in the Codex, Claude, and Antigravity applications. It also
+made routine engineering pay review and handoff costs unrelated to risk.
+
+The implementation now provides three project-scoped app adapters with
+configured member labels and one repository-scoped MCP transport. Its tools distinguish
+queueing, cursor acknowledgement, linked replies, and substantive answers. The
+transport launches no provider and grants no authority.
+
+**Decision.** The only interactive team members are the Codex desktop app, the
+Claude desktop app, and the AGY (Antigravity) desktop app. All three may reason,
+co-direct, implement, test, and challenge. No supported path launches a model
+provider from a terminal or runs one app as another app's headless child.
+Terminal commands remain for deterministic repository implementation,
+preflight, Git, builds, and tests.
+
+Routine communication uses exactly `team_status`, `team_send`, and `team_wait`
+through the app's configured project label. Labels are not app/model
+attestation. Task-scoped messages need no further
+approval and the user is never a relay. Queue success is not acknowledgement;
+acknowledgement is not a substantive reply; no message or activity field grants task,
+review, permission, or effect authority.
+
+Direction is collaborative and implementation ownership is scoped to concrete
+paths. Read-only and nonoverlapping work may run in parallel. Shared-file and
+shared-resource writes are serialized through one integrator. Ordinary work is
+direct and uses focused verification without a role declaration, event, packet,
+or handoff.
+
+There are no standing seats. At a material or high-risk formal review boundary,
+the candidate owner temporarily becomes `author` and a non-author Codex or
+Claude member temporarily becomes `reviewer` for one exact committed range.
+AGY is a full engineering member whose material findings must be considered and
+answered, but AGY cannot be the independent formal accepting verdict or an
+authority source. High-risk acceptance continues to require different model
+families and explicit abuse-class analysis.
+
+Push, merge, release, paid spend, live-data mutation, and destructive
+operations require exact current user/task authority naming executor, target,
+effect, and scope. Review and transport do not grant an effect.
+
+Git, executed tests, and desktop task history are the normal state. One concise
+checkpoint is written only for a real ownership transfer, interruption,
+compaction, or wrap where another member must resume. Old mailbox conversation,
+cursors, capacity packets, seat identities, and peer receipts remain immutable
+compatibility evidence. The fixed mailbox writer remains the smallest durable
+carrier only for a risk-required exact-range formal artifact, a real transfer
+checkpoint, or the governed learning-candidate/disposition lifecycle; it never
+carries routine chat or grants authority.
+
+**Implementation evidence.** The active formal-boundary and temporary
+author/reviewer skills are revised with the desktop doctrine, and the frozen
+selection cases live in
+`tests/skill_packs/pack-003-desktop-formal-boundary.json`. No additional
+ceremony document is introduced. `bin/pipeline probe` only derives premises and
+prints a prompt for a native same-family reduced-context subagent; it launches
+no model. That read can test routing and instruction comprehension, but not
+cross-family or live app discovery. The remaining discovery risk stays explicit
+rather than being promoted to proof.
+
+Capability routing follows the current native surfaces rather than artificial
+job partitions: Codex supplies parallel tasks, worktrees, skills, and sustained
+app orchestration; Claude supplies large-context/code sessions, native agents,
+and independent review; Antigravity supplies parallel subagents, browser
+actuation, visual artifacts, and fast multi-model work. These are routing hints,
+not restrictions or authority. Preflight measures Codex/Claude native config
+views, Antigravity's exact workspace registration, and a fresh native AGY tool
+inventory produced from the workspace plugin. Its optional interruption-free
+`mcp(pipeline-team/*)` rule still requires a one-time user choice, is global and
+server-name-scoped, so Pipeline reports but never writes that permission.
+
+**Consequences.** Active documentation and app adapters describe one small
+desktop-team system. Provider-launch commands and peer-receipt workflows are
+removed rather than retained as alternatives. Historical validators may keep
+reading old artifacts. New durable writes are limited to required formal review
+artifacts, real transfer checkpoints, and governed learning-candidate or
+disposition records through the fixed writer. App acknowledgement state remains
+deliberately weaker than understanding or authority, and
+formal review remains deliberately narrower than ordinary collaboration.
+
+This decision supersedes the current-operation portions of ADR-009, ADR-010,
+ADR-019, ADR-020, ADR-023, ADR-024, ADR-063, ADR-064, ADR-065, and ADR-068 where
+they require four standing seats, CLI-exclusive participants, headless peer
+launch, mailbox-first routing, receipt-backed peer delivery, or routine
+checkpoint publication. Their historical observations and immutable evidence
+remain intact.

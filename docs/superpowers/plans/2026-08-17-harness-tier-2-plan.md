@@ -486,6 +486,38 @@ bearing.
   recreate a `tests/` ledger unless that separation is enforceable — it
   was not, which is why PR #42 collapsed it back into one.
 
+**Established by measurement 2026-08-17, and the reason this item is not
+merely a preference: an absolute aggregate ceiling forbids the change that
+would make exceeding it reviewable.** A reviewed-exception mechanism was
+built to Codex's design and measured at net 181 against a ceiling of 100,
+so `check_no_ceremony` exited 1 on its own growth and took `ci_smoke` with
+it. Self-bootstrapping was refused — correctly, since a mechanism that
+excepts itself proves nothing — which leaves the ceiling structurally
+self-entrenching.
+
+The mechanism is **not built**. It is parked at `fa18c394` (transitional
+ceiling), `cc3c6826` (mechanism), `25c34f57` (restoration), each with a
+committed verify-request, none merged. Codex's pre-review found four
+evasions in it that its author found none of: a mutable `code_head` that
+`HEAD` satisfies before and after a later commit; a symlinked manifest
+authorizing a target outside `config/`; index-only staged bytes invisible
+to `git diff --quiet HEAD`; and `assume-unchanged` hiding modified tracked
+Python. All are unrepaired.
+
+**Why it stopped.** The mechanism is a permission-granting control, four
+holes were found in two rounds with no sign of flattening, and it existed
+to serve exactly one range that measured 115 against 100 — a case the
+budget's own remedy, sequential PRs, already covers. Codex further found
+that nothing mechanically prevents the transitional ceiling landing
+without its restoration, which would need a further mechanism to enforce
+batched landing: accretion holding up accretion before the first version
+had run once.
+
+**The finding survives the mechanism, and that is the point.** It should
+be built when several ranges legitimately cannot fit, not one. Building
+policy from a single instance is how a transitional 181 becomes a
+permanent number nobody can justify.
+
 ## 5. Constraints
 
 - **C1.** No new ceremonial layers. `549f47f4` removed some; do not

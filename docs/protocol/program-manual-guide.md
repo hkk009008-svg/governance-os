@@ -2,8 +2,8 @@
 
 *The manual is the canonical expression of the user-principal's intent for
 Pipeline: what we build, goals and non-goals, how the machine interconnects,
-the operational contract, and seat guidance. It is a compact intent layer
-(~120 lines), not a deep code reference; it was regenerated down from a
+the operational contract, and role guidance. It is a compact intent layer
+(~130 lines), not a deep code reference; it was regenerated down from a
 ~219KB snapshot whose anchors rotted faster than they helped.*
 
 > Truth hierarchy: **current source and `ARCHITECTURE.md` win on any factual
@@ -30,7 +30,7 @@ the operational contract, and seat guidance. It is a compact intent layer
   |Required inputs and success outputs           |§4   |
   |Known failure modes                           |§4   |
   |Capability-maximization defaults              |§5   |
-  |Per-seat operating guidance                   |§6   |
+  |Per-role operating guidance                   |§6   |
 - **Dispatching a subagent:** pass only the relevant section + the
   task-specific requirement — never inherited whole-doc prose.
 
@@ -42,7 +42,7 @@ the operational contract, and seat guidance. It is a compact intent layer
 - **On any factual conflict, verify against current source and
   `ARCHITECTURE.md`, which win** — the manual loses.
 - The manual intentionally does not restate the Compact Pair lifecycle
-  grammar; `scripts/codex_protocol_model.py` owns it.
+  grammar; `pipeline/codex_protocol_model.py` owns it.
 
 -----
 
@@ -65,10 +65,12 @@ the operational contract, and seat guidance. It is a compact intent layer
 
 ### 2.2 Make drift fail loud
 
-- `scripts/check_doc_claims.py` covers `docs/PROGRAM-MANUAL.md`; smoke runs
-  an advisory anchor-drift WARN on it. Run
-  `python scripts/check_doc_claims.py docs/PROGRAM-MANUAL.md` after edits
-  that touch anchors.
+- `pipeline/check_doc_claims.py` covers `docs/PROGRAM-MANUAL.md`; the
+  governance aggregate runs an advisory anchor-drift WARN on it. Run
+  `bin/pipeline check docs docs/PROGRAM-MANUAL.md` after edits that touch
+  anchors. That checker verifies a cited line only where a backticked symbol
+  precedes the anchor; an unbound anchor is listed by `--list-unbound` and
+  never gates, so a bare `path:N` still has to be read by hand.
 - Treat unresolved anchors as a gate, not a report: silent staleness is the
   enemy; a noisy drift report is the fix.
 

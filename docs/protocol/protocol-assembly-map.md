@@ -1,60 +1,60 @@
-# Protocol Assembly Map
+# Protocol assembly map
 
-This is a descriptive placement map, not another authority layer. Put each
-fact in the lowest surface that actually owns it and link instead of copying.
+## Authority order
 
-```mermaid
-flowchart TD
-  Root["AGENTS.md / provider root routers"] --> Policy["docs/protocol/agents/"]
-  Policy --> Adapters["Codex / Claude continuations"]
-  Policy --> Skills[".agents/skills/ canonical behavior"]
-  Adapters --> Native["provider-native skills, agents, launchers, hooks"]
-  Skills --> Kernel["scripts/ executable policy and writers"]
-  Native --> Kernel
-  Kernel --> Mailbox["committed mailbox and cursors"]
-  Kernel --> Bus["optional refs/threeway signed plane"]
-  Kernel --> Tests["tests unit and integration contracts"]
-  History["handoffs, capacity packets, logs, docs/superpowers, reviews"] -. evidence .-> Policy
-```
+1. System/developer instructions and the current user task.
+2. Current executable code and Git state.
+3. `AGENTS.md` universal desktop-team contract.
+4. `ARCHITECTURE.md` current implementation map.
+5. Risk and formal-review contracts under `docs/protocol/agents/`.
+6. Provider-specific desktop mechanics under `docs/protocol/codex/` and
+   `docs/protocol/claude/`.
+7. Target repository instructions for target-local product work.
+8. Historical ADRs, mailbox events, receipts, packets, and handoffs as evidence
+   only when they do not conflict with current sources above.
 
-| Concern | Owning surface | Notes |
-|---|---|---|
-| Repository router and tier selection | `AGENTS.md` | Keep short; route to scoped truth. |
-| Universal role/authority/review policy | `docs/protocol/agents/` | Shared across providers. |
-| Work phase | `docs/protocol/work-modes.md` | Independent from review risk and authority. |
-| Codex mechanics | `docs/protocol/codex/continuation.md`, `.codex/agents/` | Host task tools and native worktrees; evidence-ledger routes through `docs/protocol/codex/ledger-cli-adoption.md`. |
-| Claude mechanics | `docs/protocol/claude/`, `.claude/` | No lifecycle hook or startup binding. |
-| Canonical reusable skills | `.agents/skills/` | Provider copies are discovery/adaptation layers. |
-| Identity, ownership, risk, effects | `scripts/codex_protocol_model.py` | Executable policy seam. |
-| Formal exact-range review | `scripts/compact_pair_loop.py` | Request/report grammar and binding. |
-| Event/cursor mutation | `scripts/mailbox_writer.py`, `coordination/bin/send-event`, `consume-events` | Validated serialized write sites; commit/effect remains separate. |
-| Current orientation | `scripts/status.py snapshot` | Projection only, not authority. |
-| Mailbox events | `coordination/mailbox/sent/` | Current committed protocol state until signed bus is coherently live. |
-| Mailbox cursors | `coordination/mailbox/seen/` | Compatibility read state; coordinators are cursorless. |
-| Optional signed plane | `threeway/`, `refs/threeway/*`, `docs/protocol/threeway/` | Deployment requires explicit activation proof. |
-| Shared-file locks | `coordination/locks/`, `coordination/bin/{claim-lock,release-lock}` | Temporary, holder-bound, separately authorized remote effect. |
-| Learning lifecycle | `docs/protocol/learning/contract.md`, `scripts/learning_*` | Advisory projection/candidates; governed promotion. |
-| Product target binding | `scripts/target_binding.py`, provider target bridge | Pipeline owns governance; target repo owns product truth. |
-| Executable checks | `scripts/` | A green check proves only its call path. |
-| Contract tests | `tests/` | CI runs unit and integration suites. |
-| Historical provenance | `DECISIONS.md`, handoffs, capacity packets, `logs/`, `docs/superpowers/`, `docs/protocol/threeway/reviews/` | Preserve; do not treat as current instruction. |
+No lower layer grants an external effect or widens the task.
 
-## Placement check
+## Current placement
+
+| Concern | Canonical location |
+|---|---|
+| Team membership and universal behavior | `AGENTS.md`, `docs/protocol/agents/core.md` |
+| Implemented topology and trust boundaries | `ARCHITECTURE.md` |
+| App message contract | `docs/protocol/peer.md` |
+| MCP entry and tools | `pipeline/team.py`, `pipeline/team_mcp.py` |
+| Message validation and storage | `pipeline/team_messages.py`, `pipeline/team_store.py` |
+| App project bindings | `.codex/config.toml`, `.mcp.json`, `.agents/plugins/pipeline-team/{plugin.json,mcp_config.json}` |
+| App readiness | `pipeline/harness_preflight.py`, `bin/pipeline preflight` |
+| Risk and effect shape | `pipeline/codex_protocol_model.py`, `docs/protocol/agents/risk-classes.md` |
+| Temporary formal review | `pipeline/compact_pair_loop.py`, `docs/protocol/agents/director-operator.md` |
+| Parallelism and integration | `docs/protocol/agents/orchestration.md` |
+| Codex app mechanics | `docs/protocol/codex/continuation.md` |
+| Claude app mechanics | `CLAUDE.md`, `docs/protocol/claude/continuation.md` |
+| Product target binding | `pipeline/target_binding.py` and the selected target repository |
+| Reproducible checks | `bin/pipeline`, `pipeline/`, `tests/` |
+| Durable formal review / real transfer / learning lifecycle | fixed `bin/pipeline mail send` writer; never routine chat |
+| Legacy compatibility | old mailbox conversation/cursors, peer receipts, role adapters, plans and ADRs |
+
+## Placement rule
 
 ```text
-Universal rule?             -> docs/protocol/agents/
-Provider-only mechanic?     -> docs/protocol/<provider>/ and its native adapter
-Reusable behavior?          -> .agents/skills/
-Identity/risk/effect rule?  -> scripts/codex_protocol_model.py
-Formal review grammar?      -> scripts/compact_pair_loop.py
-Event/cursor write?         -> scripts/mailbox_writer.py + fixed wrapper
-Current protocol event?     -> coordination/mailbox/sent/
-Optional signed fact?       -> threeway/ + refs/threeway/*
-Target-local product fact?  -> target repository
-Executable proof?           -> scripts/ and tests/
-Historical evidence?        -> existing provenance corpus, clearly labeled
+Universal team rule?           -> AGENTS.md / docs/protocol/agents/
+App-only mechanic?             -> docs/protocol/<app>/ and project config
+Transport behavior?            -> pipeline/team_* and docs/protocol/peer.md
+Risk or effect admission?      -> pipeline/codex_protocol_model.py
+Formal exact-range binding?    -> pipeline/compact_pair_loop.py
+Product fact?                  -> target repository
+Executable proof?              -> pipeline/ and tests/
+Formal artifact/real transfer? -> fixed mailbox writer, smallest durable record
+Historical evidence?           -> existing legacy corpus, never live authority
 ```
 
-Do not place current work in `docs/superpowers/`; those files are historical
-inputs. Do not centralize all policy here or add a second mutable coordination
-truth.
+Do not duplicate universal rules into every adapter. Do not introduce another
+message bus, standing role inventory, provider launcher, or mutable source of
+authority when the existing app transport and Git/task state are sufficient.
+
+For the registered `evidence-ledger` target, provider routes may point to
+`docs/protocol/codex/ledger-cli-adoption.md` or the Claude equivalent for
+historical compatibility; current work still resolves the target and reads its
+own instructions before editing.

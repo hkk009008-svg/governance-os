@@ -53,26 +53,26 @@ filename.
   pair is a declared provider-native adaptation (O2: the five seat-family
   skills). A stub keeps frontmatter plus `disable-model-invocation: true`,
   points at the canonical path, and names only Claude-native deltas
-  (`env -u GIT_INDEX_FILE`, `.venv/bin/python`).
+  (`env -u GIT_INDEX_FILE`, `coordination/bin/pipeline-python`).
 - Do not add a third skill tree, a materializer, or a manifest.
 
-## Probe before landing
+## Reduced-context read before landing
 
 A new or revised instruction surface is not landed on author-context
-alone. Run the existing reduced-context lane:
+alone. After freezing the three scenarios, print the claim-only prompt:
 
 ```
-coordination/bin/probe-claim "<one-sentence claim the skill must survive>"
+bin/pipeline probe "<one-sentence claim the skill must survive>"
 ```
 
-That is a real provider launch and stays separately authorized. The
-same-family fallback (`amnesiac-prober`, ONLY the claim sentence) is
-weaker by design. Never include the diff, the body, or your reasoning
-in the probe prompt — context is contamination (`probe-a-claim`).
+The command launches nothing. Give only its prompt to the current desktop
+app's native `amnesiac-prober` subagent; never include the diff, skill body,
+repository path, or your reasoning. This same-family, instruction-isolated
+read is weaker than independent review and must be labeled that way.
 
-If a live probe cannot be launched, record the method, the discovery
-path a fresh reader of the description would have to follow, and the
-residual risk, as
+If a native subagent read cannot be run, record the method, the discovery path
+a fresh reader of the description would have to follow, and the residual risk,
+as
 `docs/protocol/learning/experiment-2026-07-31-skill-discovery.md` did.
 Do not invent a passing probe.
 
@@ -83,8 +83,8 @@ falsifier for committed stubs.
 
 ## Promotion and revision
 
-1. Draft a `learning-candidate` (`scripts/learning_extract.py`, scratch
-   only) whose Target is the canonical skill path. Category `procedure`
+1. Draft a `learning-candidate` (`bin/pipeline learn draft --scratch <dir>`,
+   scratch only) whose Target is the canonical skill path. Category `procedure`
    unless the change is a `governance-rule`.
 2. Publish only with publication authority. Disposition and promotion
    are the compact pair at the change's risk class (skill-path edits
@@ -100,7 +100,7 @@ falsifier for committed stubs.
 
 At wrap, append one `skill-use` row if this skill (or the skill just
 authored) was loaded, or skip with a one-line reason. Then consider a
-checkpoint `Lessons:` line (`scripts/draft_checkpoint.py`);
+checkpoint `Lessons:` line (`bin/pipeline checkpoint`);
 `none-considered` remains valid.
 
 ## Rule maintenance
@@ -110,7 +110,7 @@ select, and stubs that do not reach the canonical body (2026-07-31
 skill-discovery experiment; R-SKILL left as a transfer TODO).
 Mode/risk: ordinary local authoring; promotion is material-behavior or
 high-risk-control when the skill is an authority surface.
-Cost: one evaluation pack, one probe-or-honest-record, one compact pair.
+Cost: one evaluation pack, one native read-or-honest-record, one compact pair.
 Owner: learning plane (ADR-067 / ADR-068).
 Re-evaluate: if two consecutive skill landings skip the pack or the
-probe-or-record, or if a live stub-routing failure fires the falsifier.
+read-or-record, or if a live stub-routing failure fires the falsifier.

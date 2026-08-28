@@ -10,13 +10,49 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 from pathlib import Path
 
 import pytest
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 _PACK_DIR = _REPO_ROOT / "tests" / "skill_packs"
-_PACKS = sorted(_PACK_DIR.glob("pack-*.json"))
+
+
+def _tracked(pathspec: str) -> list[Path]:
+    """Files Git tracks under *pathspec*, or the glob if Git is unavailable."""
+
+    result = subprocess.run(
+        ["git", "-C", str(_REPO_ROOT), "ls-files", "-z", "--", pathspec],
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        return sorted(_REPO_ROOT.glob(pathspec))
+    return sorted(
+        _REPO_ROOT / name for name in result.stdout.decode().split("\0") if name
+    )
+
+
+def _tracked_packs() -> list[Path]:
+    """Only packs Git actually tracks.
+
+    A glob over the working tree made this suite depend on files a clone does
+    not have: two untracked packs referencing untracked skills passed here and
+    failed for anyone who cloned the same commit, so a green run described a
+    developer's directory rather than the repository. Asking Git narrows the
+    corpus to committed bytes; if Git is unavailable the glob still answers,
+    because a missing Git is not a reason to silently test nothing.
+    """
+
+    return [
+        path
+        for path in _tracked("tests/skill_packs/*.json")
+        if path.name.startswith("pack-")
+    ]
+
+
+_PACKS = _tracked_packs()
 _SKILLS_DIR = _REPO_ROOT / ".agents" / "skills"
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
 _FRONTMATTER_RE = re.compile(
@@ -46,10 +82,25 @@ def _frontmatter_field(text: str, field: str) -> str:
 
 
 def _skill_descriptions() -> dict[str, str]:
+    """Descriptions from TRACKED skills only, with duplicate names refused.
+
+    Globbing the working tree recreated the invisible-green class one level
+    down from the pack corpus: an IGNORED skill directory carrying a duplicate
+    frontmatter name silently overwrote the tracked description, so an
+    exact-commit failure became `8 passed` while `git status` stayed empty. A
+    later-sorted path quietly winning is the whole defect, so a collision is
+    now an error rather than an overwrite.
+    """
+
     descriptions: dict[str, str] = {}
-    for skill_md in sorted(_SKILLS_DIR.glob("*/SKILL.md")):
+    for skill_md in _tracked(".agents/skills/*/SKILL.md"):
         text = skill_md.read_text(encoding="utf-8")
         name = _frontmatter_field(text, "name").strip('"')
+        assert name not in descriptions, (
+            f"duplicate skill name {name!r}: {skill_md} collides with an "
+            "earlier tracked skill; a silent overwrite is how a broken "
+            "description hides behind a good one"
+        )
         descriptions[name] = _frontmatter_field(text, "description")
     return descriptions
 
@@ -95,6 +146,12 @@ def test_selection_trigger_picks_expected_skill_over_decoys() -> None:
                 )
 
 
+def test_formal_protocol_description_does_not_claim_routine_team_chat() -> None:
+    description = _skill_descriptions()["four-seat-protocol"]
+    routine = "check team status and ask Claude a routine implementation question"
+    assert _tokens(description).isdisjoint(_tokens(routine))
+
+
 def test_stub_routing_falsifier_reaches_canonical_body() -> None:
     """ADR-067: a committed Claude stub must point at a live .agents body."""
 
@@ -125,7 +182,24 @@ def test_stub_routing_falsifier_reaches_canonical_body() -> None:
                 f"{case['id']}: canonical description does not share tokens "
                 f"with trigger {case['trigger']!r}"
             )
-    assert seen >= 6, "the ADR-067 stub-routing falsifier must cover every stub"
+    # Count the stubs Git tracks, not the ones this directory happens to hold.
+    # A frozen number (">= 6") plus a working-tree glob was the same
+    # unreproducibility defect the pack corpus had: it counted an untracked
+    # stub and demanded a case for it that no clone could satisfy.
+    tracked_stubs = subprocess.run(
+        ["git", "-C", str(_REPO_ROOT), "ls-files", "--", ".claude/skills/*/SKILL.md"],
+        capture_output=True, text=True, check=False,
+    )
+    expected = sum(
+        1
+        for name in tracked_stubs.stdout.splitlines()
+        if "canonical body of this skill is"
+        in (_REPO_ROOT / name).read_text(encoding="utf-8").casefold()
+    )
+    assert seen == expected, (
+        f"the ADR-067 stub-routing falsifier covers {seen} stubs; "
+        f"{expected} are tracked"
+    )
 
 
 def test_usage_counts_are_not_consumed_by_lifecycle_kernels() -> None:
@@ -133,11 +207,11 @@ def test_usage_counts_are_not_consumed_by_lifecycle_kernels() -> None:
 
     needles = ("skill-use", "skill_use", "skill_use_helped")
     for relative in (
-        "scripts/mailbox_writer.py",
-        "scripts/compact_pair_loop.py",
-        "scripts/learning_extract.py",
-        "scripts/learning_index.py",
-        "scripts/protocol_mailbox.py",
+        "pipeline/mailbox_writer.py",
+        "pipeline/compact_pair_loop.py",
+        "pipeline/learning_extract.py",
+        "pipeline/learning_index.py",
+        "pipeline/protocol_mailbox.py",
     ):
         text = (_REPO_ROOT / relative).read_text(encoding="utf-8")
         for needle in needles:

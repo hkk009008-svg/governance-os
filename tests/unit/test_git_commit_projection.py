@@ -236,3 +236,78 @@ def test_projection_rejects_graph_output_over_byte_cap(
         projection_module.CommitGraphProjection.build(
             root, {candidate}, runner=runner
         )
+
+
+def _case_insensitive(tmp_path: Path) -> bool:
+    (tmp_path / "CaseProbe").mkdir()
+    return (tmp_path / "caseprobe").exists()
+
+
+def test_a_case_different_root_reaches_a_built_projection_not_just_the_helper(
+    tmp_path: Path,
+) -> None:
+    """The outcome, not the helper -- because the helper control missed a site.
+
+    `_same_directory` was added on 2026-08-22 to stop a case-different root
+    spelling from fabricating a FATAL, and the control written with it asserted
+    on the helper alone. `CommitGraphProjection.build` compares
+    `expected_identity.root != root` with a plain `!=` one function away, and
+    that site kept the defect. It resurfaced the same day under a different
+    message -- "repository identity changed before commit graph projection"
+    rather than "repository root drifted" -- so the passing helper control read
+    as coverage it never had.
+
+    Measured before this fix, from the lowercase spelling that is a declared
+    working directory of this harness:
+
+        committed_mailbox_projection(Path("/Users/hyungkoookkim/Pipeline")) -> None
+        committed_mailbox_projection(Path("/Users/hyungkoookkim/pipeline")) ->
+            "commit projection unavailable: repository identity changed
+             before commit graph projection"
+
+    This asserts a projection actually builds, so a third comparison site
+    cannot pass by leaving the helper untouched.
+    """
+
+    if not _case_insensitive(tmp_path):
+        pytest.skip("case-sensitive volume: the two spellings are two directories")
+
+    root, head = _repo(tmp_path / "casedrepo")
+    other_spelling = tmp_path / "CasedRepo"
+    assert other_spelling.exists(), "precondition: one directory, two spellings"
+
+    identity = projection_module.capture_repository_identity(other_spelling)
+    built = projection_module.CommitGraphProjection.build(
+        other_spelling, [head], expected_identity=identity
+    )
+
+    assert built.object_types[head] == "commit"
+
+
+def test_a_case_different_spelling_of_the_root_is_the_same_repository(
+    tmp_path: Path,
+) -> None:
+    """Identity is a filesystem fact, not a string comparison.
+
+    On a case-insensitive volume `/Users/x/pipeline` and `/Users/x/Pipeline`
+    are ONE directory, and Path.resolve() does not normalize between them. A
+    caller entering by the lowercase spelling -- a declared working directory
+    of this machine's Claude harness -- got a fabricated FATAL on every
+    governance projection. Measured 2026-08-22 before the fix:
+
+        cd /Users/hyungkoookkim/pipeline && bin/pipeline check coordination
+        FATAL review_projection_unavailable -- repository root drifted:
+        expected /Users/hyungkoookkim/pipeline,
+        observed /Users/hyungkoookkim/Pipeline
+
+    Asserted against the helper directly so it also holds on case-SENSITIVE
+    systems, where the two spellings really are different directories and must
+    keep reporting as different.
+    """
+
+    assert projection_module._same_directory(tmp_path, tmp_path) is True
+
+    other = tmp_path / "elsewhere"
+    other.mkdir()
+    assert projection_module._same_directory(tmp_path, other) is False
+    assert projection_module._same_directory(tmp_path, tmp_path / "absent") is False

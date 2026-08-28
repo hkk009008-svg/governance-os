@@ -10,7 +10,7 @@ invent a successful probe.
 
 ## Method
 
-1. Treat AGENTS.md universal contract item 7, `scripts/draft_checkpoint.py`,
+1. Treat AGENTS.md universal contract item 7, `pipeline/draft_checkpoint.py`,
    and `.agents/skills/writing-skills/SKILL.md` as the only instruction
    surfaces a fresh reader is entitled to.
 2. Ask what that reader would have to discover, in order, to satisfy the
@@ -28,16 +28,16 @@ Item 7 names, in one paragraph:
 
 - the payload (objective, scope, owner, policy revision, base/head,
   evidence refs, verification status, blockers, next action);
-- the mechanism (`findings` event, draft tool `scripts/draft_checkpoint.py`);
+- the mechanism (`findings` event, draft tool `pipeline/draft_checkpoint.py`);
 - the Lessons line, with `none-considered` always valid;
 - resume = one snapshot plus the newest campaign checkpoint;
 - recalled state is advisory.
 
 A reader who stops at AGENTS.md still has the obligation and the tool
 name. They do not yet have the field grammar. That lives in
-`scripts/protocol_mailbox.py` (`parse_checkpoint_statement`,
+`pipeline/protocol_mailbox.py` (`parse_checkpoint_statement`,
 `checkpoint_intent`) and is enforced at publication by
-`scripts/mailbox_writer.py`. The draft tool is scratch-only (O4): running
+`pipeline/mailbox_writer.py`. The draft tool is scratch-only (O4): running
 it does not publish. A reader who drafts but never publishes has not
 created durable continuity.
 

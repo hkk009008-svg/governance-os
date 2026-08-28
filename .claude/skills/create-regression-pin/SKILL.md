@@ -1,6 +1,6 @@
 ---
 name: create-regression-pin
-description: Author a strict-xfail regression pin for a confirmed-but-deferred defect (R-VERIFY-TIER B), with the three recurring traps — assertion-shape, lock-column, non-vacuous flip — as built-in checks. Use when an agent-confirmed code defect is being left unfixed this session.
+description: Author a strict-xfail regression pin for a confirmed-but-deferred defect (R-VERIFY-TIER B), with the two recurring traps — assertion-shape and non-vacuous flip — as built-in checks. Use when an agent-confirmed code defect is being left unfixed this session.
 disable-model-invocation: true
 ---
 

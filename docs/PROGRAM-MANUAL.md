@@ -1,117 +1,160 @@
-# PROGRAM MANUAL - Governance OS
+# Pipeline program manual
 
-**Canonical expression of the user-principal's intent for Pipeline.**
+## Mission
 
-Pipeline is the governance kernel. Its job is to make multi-seat AI coding work
-durable, verifiable, and bounded by explicit authority. It does this with
-mailbox events, capacity packets, live seat status, smoke gates, Codex/Claude
-protocol skills, and route-specific verification artifacts.
+Pipeline is the proportional governance and communication layer for a
+three-member desktop-app engineering team: Codex, Claude, and AGY. It maximizes
+their combined capability by enabling direct collaboration while keeping task
+scope, review independence, and external effects explicit.
 
-evidence-ledger is the bound product target for current ledger-routed work.
-Pipeline should help seats work on that target only through explicit routes; it
-must not blur product truth into governance-kernel truth.
+ARCHITECTURE.md records verified governance-kernel truth. Executable code,
+fresh Git state, and executed evidence outrank prose if they diverge.
 
-## 1. What We Build
+## Program invariants
 
-We build an executable governance OS for AI-assisted software work. The system
-turns user intent and seat-specific prompts into durable artifacts: route
-mailbox events, scoped implementation packets, verify-requests,
-verification-reports, handoffs, and gate evidence.
+1. The three desktop apps are the only interactive members. All may direct,
+   reason, implement, test, and challenge.
+2. Pipeline does not launch a model provider from the terminal and does not run
+   one app as a headless child of another.
+3. Routine communication uses the three MCP tools: `team_status`, `team_send`,
+   and `team_wait`.
+4. Queued, returned, acknowledged, replied, and substantively answered are different facts.
+5. Transport never grants task, review, permission, or effect authority.
+6. Ordinary work is direct. There are no standing seats or coordinator role.
+7. Read-only and file-disjoint work may run in parallel; shared-file and shared
+   resource writes are serialized.
+8. Formal author/reviewer responsibilities exist only for a risk-triggered
+   exact range and end with that review.
+9. AGY is fully heard as an engineering member but cannot be the sole
+   independent formal verdict or an authority source.
+10. Push, merge, release, paid spend, live mutation, and destructive operations
+    need exact current task/user authority.
+11. Git, tests, and app task history are normal state. One checkpoint is used
+    only for a real transfer or continuation boundary.
+12. Legacy mailbox conversation, cursors, seats, capacity, and peer receipts
+    are compatibility history; the fixed writer remains only for three
+    narrowly governed uses: a required formal review artifact, a real
+    transfer/checkpoint `findings` event, or the governed
+    learning-candidate/disposition lifecycle.
 
-The output the user receives is not just prose. It is a repository state that
-can be audited by git, tests, mailbox bodies, and route validators.
+## Control flow
 
-## 2. Product Goals And Non-Goals
+```text
+accepted task
+  -> inspect current repository and team state
+  -> direct work or bounded parallel split
+  -> focused evidence and exact diff
+  -> risk classification
+       ordinary-local    -> finish
+       material-behavior -> temporary non-author exact-range review
+       high-risk-control -> different-family review + abuse assessment
+  -> exact external-effect authority, only if an effect is requested
+  -> result or one real-transfer checkpoint
+```
 
-Goals:
-- Keep Pipeline as the authoritative governance kernel for Codex seat startup.
-- Make every active route explicit, bounded, and verifiable.
-- Preserve user-gated side-effect boundaries for push, locks, cursor consume,
-  spend, pods, checkout refresh, and product generation.
-- Prefer executable proof over status theater.
-- Keep product-specific truth in the target product repo.
+The program deliberately has no mandatory brainstorming stage, readiness role,
+role board, mailbox event, capacity packet, or review artifact for ordinary
+work. Add structure only when it answers a real ambiguity or enforces a real
+risk boundary.
 
-Non-goals:
-- Pipeline is not the private evidence-ledger application.
-- Pipeline does not silently publish, push, refresh target checkouts, or spend
-  money.
-- Coordinator artifacts do not replace operator GO/NITS/FAIL verification.
-- Warning-only smoke output does not prove clean provenance.
+## Communication plane
 
-## 3. How The Machine Interconnects
+The checked-in project bindings supply one normal member label per app. AGY's
+binding is a workspace plugin with a `plugin.json` manifest and
+`mcp_config.json`; the other apps use their native project MCP config. The
+shared MCP server validates labels, recipients, message size, idempotency,
+replies, cursors, and bounded waits. Labels are not app or model attestation.
+Its SQLite store lives under the Git common directory so linked worktrees share
+state without committing messages.
 
-User or parent prompts assign a mode: readiness bridge, live seat, coordinator,
-or bounded subagent. One compact orientation snapshot reads the current Git,
-task, mailbox, and gate state before a protocol decision.
-`ledger_start_guard.py` additionally enforces the Pipeline-first boundary only
-for ledger-routed work. Codex role mechanics live in
-`.agents/skills/four-seat-protocol/`.
+`team_status` is orientation and sent-state inspection. `team_send` queues a
+message. `team_wait` returns messages after an explicit caller cursor; a later
+call that advances the cursor acknowledges addressed messages through it. A
+reply link records relationship, not quality.
+Every response states that it grants no authority.
 
-Mailbox events in `coordination/mailbox/sent/` preserve task communication but
-do not create external-effect authority. The effective task/route defines
-active scope; capacity packets are diagnostics and historical evidence. Smoke,
-coordination, and doc-claim tools provide executable evidence. A formal review
-loop closes only when the triggered risk profile is satisfied by an exact-range
-verification report.
+Routine in-task messages are allowed without separate provider or spend
+approval because the desktop sessions already exist; the transport launches no
+provider. A communication failure is reported or retried through the app, not
+worked around with a CLI provider launcher or human relay.
 
-## 4. Operational Contract
+## Capability strategy
 
-Required inputs:
-- A user or parent prompt naming the requested outcome; a protocol role is
-  needed only for governed work.
-- A current Pipeline checkout.
-- The effective route or task record when governed work is active.
+The program routes rather than partitions capability:
 
-Successful run output:
-- For implementation: the requested scoped change and fresh sufficient
-  verification. Commit and publication remain separate actions.
-- For verification: a GO/NITS/FAIL verification-report with command evidence.
-- For coordination: a task/route event only when ownership, evidence, or a
-  hard boundary materially changes; no no-op artifact is required.
+- Codex commonly supplies workspace execution, integration, orchestration, and
+  long-running follow-through.
+- Claude commonly supplies large-context synthesis, architecture, independent
+  diff review, and visual evaluation.
+- AGY commonly supplies rapid mapping/debugging, browser and artifact work,
+  premise/evasion challenge, isolated experiments, and multi-model advice.
 
-Canonical Compact Pair Invariant: `scripts/codex_protocol_model.py`. This
-manual intentionally does not restate its lifecycle grammar.
+Any member may lead and implement. Weakness reduction is evidence-based:
+analysis must meet current code, rapid advice must survive local reproduction,
+parallel contributions must meet an integrator, and high-risk authored work
+must meet a different model family. AGY findings are judged by evidence and
+explicitly dispositioned when material.
 
-Known failure modes:
-- Stale route prose is trusted over newer mailbox/git evidence. Fix by
-  rereading current route bodies, seat status, recent commits, and later
-  reports before acting.
-- Unknown broadcast receipt is treated as delivery. Fix by treating unknown as
-  unproved until seat-specific evidence exists.
-- Normal target checkout is treated as the route base. Fix by following the
-  active route's named base or worktree first.
-- A `SHA-REF BASELINE CHECK` failure is summarized as ordinary smoke noise.
-  Fix by running the SHA-reference report and treating changed drift as a
-  bounded cleanup or owner-decision gate.
+## Governance plane
 
-## 5. Capability-Maximization Playbook
+The closed classes in `pipeline/codex_protocol_model.py` are:
 
-Use the smallest sufficient task record. Governed work names the outcome,
-owner, target, evidence bar, hard boundaries, reviewer when required, and any
-separately authorized external effect.
+| Class | Required control |
+|---|---|
+| `ordinary-local` | focused verification |
+| `material-behavior` | focused verification plus non-author exact-range review |
+| `high-risk-control` | material controls plus different-family review and abuse-class assessment |
+| `external-effect` | exact live authority for executor, target, effect, and scope |
 
-Use subagents when they add independent signal or capacity, but keep seat
-authority in the live seat. Subagents do not consume cursors, issue GO, route
-coordinator work, push, claim locks, spend, or start pods.
+Formal review is implemented by `pipeline/compact_pair_loop.py`. Temporary
+`author` owns the candidate; temporary `reviewer` is a non-author Codex or
+Claude member and owns the formal result. AGY may supply first-class evidence
+but is not accepted as the only formal verdict. Review does not grant an
+external effect.
 
-Use tests and scripts as the evidence layer. New behavior belongs behind a
-focused regression test before implementation. Gate numbers belong in committed
-script output or route evidence, not ad-hoc memory.
+## State plane
 
-## 6. Operating Guidance For Seats
+The current user task defines scope. Git records the candidate. Tests record
+executed behavior. Desktop task history records the working conversation. A
+formal report, when required, binds the exact range. These are sufficient for
+normal work.
 
-Director seats scope and implement only inside their route. They send one
-canonical committed verify-request once its structural authority fields are ready.
+A checkpoint is exceptional: use one only when another member must resume
+after transfer, interruption, compaction, or wrap. It contains objective,
+scope, owner, base/head, evidence, verification state, blockers, and next
+action. It is not a replacement for Git or task history.
 
-Operator seats independently verify only from a lawful trigger and return
-GO/NITS/FAIL. Review depth follows actual behavior and risk; documentation and
-status paths are not automatically exempt when they change authority or
-operation.
+Historical mailbox conversation, cursors, seat names, capacity packets,
+handoffs, and peer receipts remain readable for audit and backwards-compatible
+validation. The fixed mailbox writer persists only three narrowly governed
+uses: a risk-required exact-range formal review artifact, a real
+transfer/checkpoint `findings` event, or the governed
+learning-candidate/disposition lifecycle. It is not routine transport and
+cannot create a live role or authority.
 
-Coordinator reconciles route, lock, mailbox, capacity, and closeout state.
-Coordinator must not author behavior-changing product fixes.
+## Executable seams
 
-Coordinator and seat chains continue internally and stop only at completion, a
-genuine blocker, scope expansion, or a separately user-gated effect. At a real
-stop, state the blocking boundary or plain next authority without a prescribed
-heading or returning seat commands to the user.
+| Concern | Code |
+|---|---|
+| Command dispatch | `bin/pipeline`, `pipeline/cli.py` |
+| App MCP server | `pipeline/team.py`, `pipeline/team_mcp.py` |
+| Message semantics | `pipeline/team_messages.py` |
+| Secure store | `pipeline/team_store.py` |
+| App/config handshake | `pipeline/harness_preflight.py` |
+| Native config/workspace checks and AGY permission | `pipeline/native_app_readiness.py` |
+| Risk, model family, effects | `pipeline/codex_protocol_model.py` |
+| Exact-range formal review | `pipeline/compact_pair_loop.py` |
+| Target selection | `pipeline/target_binding.py` |
+| Verification | `pipeline/`, `tests/`, `bin/pipeline check` |
+
+Controls establish only what their call path observes. Preflight does not prove
+an app is open. A green test does not prove user intent. Model-family diversity
+does not create authority. Documentation cannot claim a gate that code does not
+enforce.
+
+## Change policy
+
+Prefer deleting or simplifying duplicate doctrine to adding another layer.
+Keep app adapters thin and universal rules centralized. A new transport, role,
+provider launcher, or durable state surface needs demonstrated necessity and
+high-risk review; convenience alone is not sufficient.

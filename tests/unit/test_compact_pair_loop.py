@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 import compact_pair_loop as pair
+import mailbox_writer
 
 
 FINDING_A = (
@@ -29,12 +30,6 @@ REPORT_PATH = (
     "coordination/mailbox/sent/"
     "2026-07-18T08-10-00Z-operator-to-all-verification-report.md"
 )
-CURRENT_REQUEST_PATH = REQUEST_PATH.replace(
-    "director-to-operator", "author-to-reviewer"
-)
-CURRENT_REPORT_PATH = REPORT_PATH.replace("operator-to-all", "reviewer-to-author")
-
-
 # Hermetic fixture-git environment: the ambient VM configuration (commit
 # signing via the exec-daemon shim, fsmonitor daemons) must not run inside
 # throwaway test repositories; see tests/unit/test_check_coordination.py.
@@ -210,8 +205,8 @@ def _repo(
 ) -> tuple[Path, str, str, str]:
     root = tmp_path / "repo"
     root.mkdir()
-    (root / "scripts").mkdir()
-    (root / "scripts/feature.py").write_text("VALUE = 1\n", encoding="utf-8")
+    (root / "pipeline").mkdir()
+    (root / "pipeline/feature.py").write_text("VALUE = 1\n", encoding="utf-8")
     _git(root, "init", "-q")
     _git(root, "config", "user.name", "Compact Pair Test")
     _git(root, "config", "user.email", "compact-pair@example.invalid")
@@ -219,8 +214,8 @@ def _repo(
     _git(root, "commit", "-q", "-m", "chore: base")
     base = _git(root, "rev-parse", "HEAD")
 
-    (root / "scripts/feature.py").write_text("VALUE = 2\n", encoding="utf-8")
-    _git(root, "add", "scripts/feature.py")
+    (root / "pipeline/feature.py").write_text("VALUE = 2\n", encoding="utf-8")
+    _git(root, "add", "pipeline/feature.py")
     _git(root, "commit", "-q", "-m", "feat: candidate")
     head = _git(root, "rev-parse", "HEAD")
 
@@ -331,7 +326,7 @@ def test_high_risk_request_requires_abuse_assessment_and_report_binds_it(
             trigger,
             # A declared high-risk-control artifact needs a genuinely distinct
             # model family; the fixture default shares the author's.
-            reviewer_model="claude-opus-5",
+            reviewer_model="claude-opus-4-7",
             risk_class="high-risk-control",
             abuse_class_assessment_binding="bound-to-request",
             finding_refs=(minted,),
@@ -344,27 +339,6 @@ def test_high_risk_request_requires_abuse_assessment_and_report_binds_it(
 
     assert report.risk_class == "high-risk-control"
     assert pair.validate_report(root, report) == []
-
-
-@pytest.mark.parametrize(
-    ("reference", "accepted"),
-    (
-        (f"{CURRENT_REQUEST_PATH}@{'a' * 40}", True),
-        (f"{CURRENT_REPORT_PATH}@{'a' * 40}", True),
-        (f"{CURRENT_REPORT_PATH}@{'A' * 40}", False),
-        (
-            CURRENT_REPORT_PATH.replace("verification-report", "findings")
-            + "@"
-            + "a" * 40,
-            False,
-        ),
-    ),
-)
-def test_current_review_reference_grammar_is_narrow(
-    reference: str, accepted: bool,
-) -> None:
-    assert pair._immutable_review_reference_is_canonical(reference) is accepted
-    assert not pair.protocol_mailbox.immutable_reference_is_canonical(reference)
 
 
 def test_high_risk_candidate_rejects_missing_assessment_or_report_binding(
@@ -422,6 +396,32 @@ def test_report_candidate_requires_matching_explicit_risk_class(tmp_path: Path) 
     assert "report Risk class does not match request" in pair.validate_report(root, report)
 
 
+def test_material_report_requires_current_reviewer(tmp_path: Path) -> None:
+    root, base, head, trigger = _repo(tmp_path, mint_finding_ref=True)
+    minted = _minted_repo_ref(root)
+    candidate = root / "coordination/mailbox/sent/.report-candidate.tmp"
+
+    def candidate_report(reviewer_model: str) -> pair.VerificationReport:
+        candidate.write_text(
+            _report_text(
+                base,
+                head,
+                trigger,
+                reviewer_model=reviewer_model,
+                finding_refs=(minted,),
+                dispositions=((minted, "addressed"),),
+            ),
+            encoding="utf-8",
+        )
+        return pair.parse_verification_report_candidate(root, candidate, REPORT_PATH)
+
+    assert pair.validate_report(root, candidate_report("gpt-5.6-terra")) == []
+    for model_id in ("Gemini 3.7 Flash (High)", "invented-reviewer"):
+        assert "reviewer model must resolve to a currently admitted reviewer model" in (
+            pair.validate_report(root, candidate_report(model_id))
+        )
+
+
 def test_verify_request_candidate_rejects_non_pair_author_path(
     tmp_path: Path,
 ) -> None:
@@ -451,7 +451,7 @@ def test_readers_reject_mixed_current_and_legacy_routes(tmp_path: Path) -> None:
                 trigger_commit="a" * 40,
                 allow_frozen_legacy=False,
             )
-    for route in ("reviewer-to-all", "operator-to-author"):
+    for route in ("reviewer-to-director", "operator-to-author"):
         with pytest.raises(pair.CompactPairError, match="cannot mix current and legacy"):
             pair._parse_verification_report_bytes(
                 tmp_path, f"{prefix}{route}-verification-report.md", b""
@@ -1071,8 +1071,8 @@ def test_high_risk_control_rejects_same_family_reviewer(
 @pytest.mark.parametrize(
     ("author_model", "reviewer_model"),
     (
-        ("gpt-5.6-sol", "claude-opus-5"),
-        ("claude-opus-5", "gpt-5.6-terra"),
+        ("gpt-5.6-sol", "claude-opus-4-7"),
+        ("claude-opus-4-7", "gpt-5.6-terra"),
     ),
 )
 def test_high_risk_control_accepts_distinct_family_reviewer(
@@ -1424,9 +1424,8 @@ def test_go_evidence_rejects_bare_command_and_result_markers(tmp_path: Path) -> 
     assert "GO requires evidence" in pair.validate_report(root, report)
 
 
-@pytest.mark.parametrize("verdict", ("NITS", "FAIL"))
-def test_truthful_non_go_preserves_findings_without_success_evidence(
-    tmp_path: Path, verdict: str
+def test_truthful_fail_preserves_findings_without_success_evidence(
+    tmp_path: Path,
 ) -> None:
     root, base, head, trigger = _repo(tmp_path)
     report = pair.parse_verification_report(
@@ -1436,13 +1435,33 @@ def test_truthful_non_go_preserves_findings_without_success_evidence(
             base,
             head,
             trigger,
-            verdict=verdict,
+            verdict="FAIL",
             evidence=False,
             dispositions=((FINDING_A, "unresolved-hard-boundary"),),
         ),
     )
 
     assert pair.validate_report(root, report) == []
+
+
+def test_nits_cannot_admit_an_unresolved_hard_boundary(tmp_path: Path) -> None:
+    root, base, head, trigger = _repo(tmp_path)
+    report = pair.parse_verification_report(
+        root,
+        _write_report(
+            root,
+            base,
+            head,
+            trigger,
+            verdict="NITS",
+            evidence=False,
+            dispositions=((FINDING_A, "unresolved-hard-boundary"),),
+        ),
+    )
+
+    assert "NITS cannot carry unresolved hard-boundary findings" in (
+        pair.validate_report(root, report)
+    )
 
 
 def test_report_rejects_wrong_assignment_request_and_range(tmp_path: Path) -> None:
@@ -1639,7 +1658,7 @@ def test_recommitted_identical_verbose_request_loses_legacy_compatibility(
 
 COMPOSED_PATH = (
     "coordination/mailbox/sent/"
-    "2026-07-26T08-00-00Z-director-to-operator-verify-request.md"
+    "2026-07-26T08-00-00Z-author-to-reviewer-verify-request.md"
 )
 
 
@@ -1647,6 +1666,9 @@ def _compose_repo(tmp_path: Path) -> tuple[Path, str, str]:
     root = tmp_path / "compose"
     root.mkdir()
     (root / "feature.py").write_text("VALUE = 1\n", encoding="utf-8")
+    kinds = root / "coordination/mailbox/kinds.txt"
+    kinds.parent.mkdir(parents=True)
+    kinds.write_text("verify-request\n", encoding="utf-8")
     _git(root, "init", "-q")
     _git(root, "config", "user.name", "Compose Test")
     _git(root, "config", "user.email", "compose@example.invalid")
@@ -1664,9 +1686,9 @@ def _publish_as_send_event(root: Path, body: str) -> Path:
     """Wrap a composed body exactly as `coordination/bin/send-event` does."""
     candidate = root / "candidate.tmp"
     candidate.write_text(
-        "# Director → Operator: composed request\n\n"
-        "**When:** 2026-07-26T08:00:00Z · **From:** director (online)\n\n"
-        f"{body}\n\nCursor at send: 0\n",
+        "# Author → Reviewer: composed request\n\n"
+        "**When:** 2026-07-26T08:00:00Z · **From:** author (online)\n\n"
+        f"{body}\n\nCursor at send: cursorless\n",
         encoding="utf-8",
     )
     candidate.chmod(0o600)
@@ -1711,9 +1733,9 @@ def test_composed_request_round_trips_through_the_candidate_parser(
     head = _git(root, "rev-parse", "HEAD")
     body = pair.compose_request(
         root,
-        author_seat="director",
-        author_model="claude-opus-5",
-        assigned_operator="operator2",
+        author_seat="author",
+        author_model="gpt-5.6-sol",
+        assigned_operator="reviewer",
         risk_class="high-risk-control",
         base_rev="HEAD~1",
         head_rev="HEAD",
@@ -1726,14 +1748,14 @@ def test_composed_request_round_trips_through_the_candidate_parser(
     request = pair.parse_verify_request_candidate(
         root,
         candidate,
-        COMPOSED_PATH.replace("-to-operator-", "-to-operator2-"),
+        COMPOSED_PATH,
     )
 
     assert request.reviewed_base == base
     assert request.reviewed_head == head
-    assert request.author_seat == "director"
-    assert request.author_model == "claude-opus-5"
-    assert request.assigned_operator == "operator2"
+    assert request.author_seat == "author"
+    assert request.author_model == "gpt-5.6-sol"
+    assert request.assigned_operator == "reviewer"
     assert request.risk_class == "high-risk-control"
     assert request.risk_class_explicit is True
     assert request.outcome == "Composed outcome under test."
@@ -1742,6 +1764,7 @@ def test_composed_request_round_trips_through_the_candidate_parser(
     )
     assert request.finding_refs == (cited,)
     assert pair.validate_request_candidate(root, request) == []
+    assert mailbox_writer.validate_event_candidate(root, candidate, COMPOSED_PATH) is None
 
 
 def test_compose_resolves_revisions_so_authors_never_transcribe_shas(
@@ -1750,9 +1773,9 @@ def test_compose_resolves_revisions_so_authors_never_transcribe_shas(
     root, base, head = _compose_repo(tmp_path)
     body = pair.compose_request(
         root,
-        author_seat="director",
-        author_model="claude-opus-5",
-        assigned_operator="operator",
+        author_seat="author",
+        author_model="gpt-5.6-sol",
+        assigned_operator="reviewer",
         risk_class="material-behavior",
         base_rev="HEAD~1",
         head_rev="HEAD",
@@ -1766,6 +1789,35 @@ def test_compose_resolves_revisions_so_authors_never_transcribe_shas(
     assert "## Finding Refs" not in body
 
 
+def test_new_request_requires_an_explicitly_current_author_model(
+    tmp_path: Path,
+) -> None:
+    root, _, _ = _compose_repo(tmp_path)
+    with pytest.raises(pair.CompactPairError, match="currently admitted author model"):
+        pair.compose_request(
+            root,
+            author_seat="author",
+            author_model="claude-opus-5",
+            assigned_operator="reviewer",
+            risk_class="material-behavior",
+            base_rev="HEAD~1",
+            head_rev="HEAD",
+            outcome="A retired model label cannot publish new authority.",
+        )
+
+    body = pair.compose_request(
+        root,
+        author_seat="author",
+        author_model="Gemini 3.7 Flash (High)",
+        assigned_operator="reviewer",
+        risk_class="material-behavior",
+        base_rev="HEAD~1",
+        head_rev="HEAD",
+        outcome="A current AGY model may author a review candidate.",
+    )
+    assert "Author model: Gemini 3.7 Flash (High)" in body
+
+
 @pytest.mark.parametrize("risk_class", ("ordinary-local", "external-effect", "invented"))
 def test_compose_refuses_risk_classes_that_carry_no_formal_review(
     tmp_path: Path, risk_class: str
@@ -1774,9 +1826,9 @@ def test_compose_refuses_risk_classes_that_carry_no_formal_review(
     with pytest.raises(pair.CompactPairError, match="Risk class must be"):
         pair.compose_request(
             root,
-            author_seat="director",
-            author_model="claude-opus-5",
-            assigned_operator="operator",
+            author_seat="author",
+            author_model="gpt-5.6-sol",
+            assigned_operator="reviewer",
             risk_class=risk_class,
             base_rev="HEAD~1",
             head_rev="HEAD",
@@ -1787,8 +1839,8 @@ def test_compose_refuses_risk_classes_that_carry_no_formal_review(
 @pytest.mark.parametrize(
     ("author", "operator", "expected"),
     (
-        ("coordinator", "operator", "Author seat must be"),
-        ("director", "director2", "Assigned operator must be"),
+        ("coordinator", "reviewer", "Author seat must be"),
+        ("author", "operator2", "Assigned operator must be"),
     ),
 )
 def test_compose_refuses_seats_outside_the_pair(
@@ -1799,7 +1851,7 @@ def test_compose_refuses_seats_outside_the_pair(
         pair.compose_request(
             root,
             author_seat=author,
-            author_model="claude-opus-5",
+            author_model="gpt-5.6-sol",
             assigned_operator=operator,
             risk_class="material-behavior",
             base_rev="HEAD~1",
@@ -1815,9 +1867,9 @@ def test_compose_refuses_high_risk_without_an_abuse_assessment(
     with pytest.raises(pair.CompactPairError, match="Abuse Class Assessment"):
         pair.compose_request(
             root,
-            author_seat="director",
-            author_model="claude-opus-5",
-            assigned_operator="operator",
+            author_seat="author",
+            author_model="gpt-5.6-sol",
+            assigned_operator="reviewer",
             risk_class="high-risk-control",
             base_rev="HEAD~1",
             head_rev="HEAD",
@@ -1846,9 +1898,9 @@ def test_compose_rejects_malformed_inputs_before_emitting_anything(
     """
     root, _, _ = _compose_repo(tmp_path)
     arguments: dict[str, object] = {
-        "author_seat": "director",
-        "author_model": "claude-opus-5",
-        "assigned_operator": "operator",
+        "author_seat": "author",
+        "author_model": "gpt-5.6-sol",
+        "assigned_operator": "reviewer",
         "risk_class": "material-behavior",
         "base_rev": "HEAD~1",
         "head_rev": "HEAD",
@@ -1879,9 +1931,9 @@ def test_compose_refuses_a_finding_ref_whose_object_does_not_exist(
     )
     real_commit = _commit_an_event(root, relative)
     arguments: dict[str, object] = {
-        "author_seat": "director",
-        "author_model": "claude-opus-5",
-        "assigned_operator": "operator",
+        "author_seat": "author",
+        "author_model": "gpt-5.6-sol",
+        "assigned_operator": "reviewer",
         "risk_class": "material-behavior",
         "base_rev": "HEAD~1",
         "head_rev": "HEAD",
@@ -1921,9 +1973,9 @@ def test_compose_still_accepts_a_digest_reference_it_cannot_verify(
 
     body = pair.compose_request(
         root,
-        author_seat="director",
-        author_model="claude-opus-5",
-        assigned_operator="operator",
+        author_seat="author",
+        author_model="gpt-5.6-sol",
+        assigned_operator="reviewer",
         risk_class="material-behavior",
         base_rev="HEAD~1",
         head_rev="HEAD",
@@ -2040,27 +2092,21 @@ def test_object_exists_treats_a_missing_root_as_no_object(tmp_path: Path) -> Non
     assert pair._object_exists(tmp_path / "absent", "e" * 40, "x.md") is False
 
 
-def test_compose_refuses_a_self_addressed_routing_the_writer_would_reject(
+def test_compose_refuses_any_identity_outside_live_author_reviewer(
     tmp_path: Path, repo_root: Path
 ) -> None:
-    """Operator-to-itself composed cleanly while being unpublishable.
-
-    `coordination/bin/send-event` refuses a self-addressed event before it
-    builds a candidate, so `_compose_self_check` — which simulates the envelope
-    rather than invoking the writer — never reached that boundary. Membership
-    was checked for each seat independently and equality never was.
-    """
+    """The composer must not emit a route the current writer cannot publish."""
     root, _, _ = _compose_repo(tmp_path)
-    with pytest.raises(pair.CompactPairError, match="must differ"):
+    with pytest.raises(pair.CompactPairError, match="Author seat"):
         pair.compose_request(
             root,
             author_seat="operator",
-            author_model="gpt-5",
-            assigned_operator="operator",
+            author_model="gpt-5.6-sol",
+            assigned_operator="reviewer",
             risk_class="material-behavior",
             base_rev="HEAD~1",
             head_rev="HEAD",
-            outcome="Self-addressed routing.",
+            outcome="Retired routing.",
         )
 
     writer = (repo_root / "coordination/bin/send-event").read_text(encoding="utf-8")
@@ -2094,9 +2140,9 @@ def test_compose_refuses_a_range_assembled_from_two_repository_states(
     with pytest.raises(pair.CompactPairError, match="moved while composing"):
         pair.compose_request(
             root,
-            author_seat="director",
-            author_model="claude-opus-5",
-            assigned_operator="operator",
+            author_seat="author",
+            author_model="gpt-5.6-sol",
+            assigned_operator="reviewer",
             risk_class="material-behavior",
             base_rev="HEAD~1",
             head_rev="HEAD",
@@ -2108,9 +2154,9 @@ def test_compose_refuses_a_range_assembled_from_two_repository_states(
     monkeypatch.setattr(pair, "_resolve_rev", real)
     body = pair.compose_request(
         root,
-        author_seat="director",
-        author_model="claude-opus-5",
-        assigned_operator="operator",
+        author_seat="author",
+        author_model="gpt-5.6-sol",
+        assigned_operator="reviewer",
         risk_class="material-behavior",
         base_rev=base,
         head_rev=head,
@@ -2153,19 +2199,32 @@ def _remediation_fixture(
     tmp_path: Path,
     *,
     request_transform=lambda text: text,
-    use_failed_report_base: bool = True,
+    use_failed_reviewed_head: bool = True,
     use_descendant_head: bool = True,
     target_verdict: str = "FAIL",
     carry_failed_finding: bool = True,
+    author_seat: str = "director",
+    assigned_operator: str = "operator",
+    initial_request_path: str = REQUEST_PATH,
+    initial_report_path: str = REPORT_PATH,
 ) -> tuple[Path, str, str, str, str, str]:
-    root, base, reviewed_head, trigger = _repo(tmp_path, mint_finding_ref=True)
+    root, base, reviewed_head, trigger = _repo(
+        tmp_path,
+        mint_finding_ref=True,
+        request_path=initial_request_path,
+        author_seat=author_seat,
+        assigned_operator=assigned_operator,
+    )
     finding_ref = _minted_repo_ref(root)
     fail_path, fail_commit = _commit_report(
         root,
         base,
         reviewed_head,
         trigger,
+        report_path=initial_report_path,
+        request_path=initial_request_path,
         verdict=target_verdict,
+        reviewer_seat=assigned_operator,
         finding_refs=(finding_ref,),
         dispositions=(
             (
@@ -2174,8 +2233,8 @@ def _remediation_fixture(
             ),
         ),
     )
-    (root / "scripts/feature.py").write_text("VALUE = 3\n", encoding="utf-8")
-    _git(root, "add", "scripts/feature.py")
+    (root / "pipeline/feature.py").write_text("VALUE = 3\n", encoding="utf-8")
+    _git(root, "add", "pipeline/feature.py")
     _git(root, "commit", "-q", "-m", "fix: remediate failed review")
     remediation_head = (
         _git(root, "rev-parse", "HEAD") if use_descendant_head else base
@@ -2185,11 +2244,13 @@ def _remediation_fixture(
         finding_ref if carry_failed_finding else "sha256:" + "2" * 64
     )
     request_text = _request_text(
-            fail_commit if use_failed_report_base else base,
-            remediation_head,
-            finding_refs=(request_finding_ref,),
-            remediates_failed_report=failed_ref,
-        )
+        reviewed_head if use_failed_reviewed_head else base,
+        remediation_head,
+        author_seat=author_seat,
+        assigned_operator=assigned_operator,
+        finding_refs=(request_finding_ref,),
+        remediates_failed_report=failed_ref,
+    )
     (root / SECOND_REQUEST_PATH).write_text(
         request_transform(request_text),
         encoding="utf-8",
@@ -2199,7 +2260,7 @@ def _remediation_fixture(
     remediation_trigger = _git(root, "rev-parse", "HEAD")
     return (
         root,
-        fail_commit,
+        reviewed_head,
         remediation_head,
         remediation_trigger,
         failed_ref,
@@ -2243,7 +2304,17 @@ def test_compose_cli_carries_exact_failed_remediation_binding(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     root, base, head, _trigger, failed_ref, finding_ref = _remediation_fixture(
-        tmp_path
+        tmp_path,
+        author_seat="author",
+        assigned_operator="reviewer",
+        initial_request_path=(
+            "coordination/mailbox/sent/"
+            "2026-07-18T08-00-00Z-author-to-reviewer-verify-request.md"
+        ),
+        initial_report_path=(
+            "coordination/mailbox/sent/"
+            "2026-07-18T08-10-00Z-reviewer-to-all-verification-report.md"
+        ),
     )
     monkeypatch.setattr(pair.sys, "stdin", io.StringIO("Review the repair."))
 
@@ -2253,11 +2324,11 @@ def test_compose_cli_carries_exact_failed_remediation_binding(
             "--repo-root",
             str(root),
             "--author",
-            "director",
+            "author",
             "--author-model",
             "gpt-5.6-sol",
             "--operator",
-            "operator",
+            "reviewer",
             "--risk-class",
             "material-behavior",
             "--base",
@@ -2305,12 +2376,12 @@ def test_remediation_request_must_explicitly_name_failed_report(
     )
 
 
-def test_remediation_base_must_equal_failed_report_introduction(
+def test_remediation_base_must_equal_failed_reviewed_head(
     tmp_path: Path,
 ) -> None:
     root, base, head, trigger, failed_ref, finding_ref = _remediation_fixture(
         tmp_path,
-        use_failed_report_base=False,
+        use_failed_reviewed_head=False,
     )
     candidate = _write_report(
         root,
@@ -2328,7 +2399,7 @@ def test_remediation_base_must_equal_failed_report_introduction(
     )
 
     assert any(
-        "failed report introduction commit" in violation
+        "failed report Reviewed head" in violation
         for violation in pair.validate_report(root, report)
     )
 
@@ -2598,8 +2669,8 @@ def test_superseded_commit_must_introduce_the_report(tmp_path: Path) -> None:
     root, base, head, trigger = _repo(tmp_path, mint_finding_ref=True)
     minted = _minted_repo_ref(root)
     orphan_path, _ = _commit_report(root, base, head, trigger)
-    (root / "scripts/feature.py").write_text("VALUE = 3\n", encoding="utf-8")
-    _git(root, "add", "scripts/feature.py")
+    (root / "pipeline/feature.py").write_text("VALUE = 3\n", encoding="utf-8")
+    _git(root, "add", "pipeline/feature.py")
     _git(root, "commit", "-q", "-m", "feat: unrelated later work")
     wrong_commit = _git(root, "rev-parse", "HEAD")
     candidate = _write_report(

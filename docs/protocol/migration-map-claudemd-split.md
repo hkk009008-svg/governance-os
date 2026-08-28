@@ -1,3 +1,10 @@
+> **HISTORICAL RECORD — not current instruction.** This maps a CLAUDE.md split
+> that three later rewrites have superseded; the file sizes and several target
+> paths it names no longer exist. It is kept because six live documents cite it
+> as provenance, and deleting it would trade one stale map for six dangling
+> references. Current doctrine: `AGENTS.md`, then `CLAUDE.md` or
+> `docs/protocol/codex/continuation.md`.
+
 # Migration manifest: CLAUDE.md / AGENTS.md split
 
 This file is the **single source of truth** for the documentation refactor that

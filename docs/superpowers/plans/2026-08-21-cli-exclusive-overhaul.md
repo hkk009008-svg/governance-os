@@ -1,0 +1,334 @@
+# CLI-exclusive overhaul — Claude CLI + Codex CLI as one unit
+
+**Status:** executed, reviewed FAIL by Codex, remediated. Ten commits on
+`claude/cli-exclusive-overhaul`. Awaiting re-review.
+**Owner:** user-principal directive; executed from the Claude Code CLI.
+**Base:** `fec89e52` on `claude/tier2-record-ceiling-finding` (main = `86146d1f`).
+`docs/superpowers/plans/` is not an authority surface; this file confers nothing.
+
+## 0. Intent
+
+Turn Pipeline from a multi-provider governance kernel with a desktop-app
+adapter into a **CLI-exclusive repository whose only two participants are the
+`claude` CLI and the `codex` CLI**, with AGY available to both as an advisory
+subagent. Everything reorganises around that: one command surface, one
+contract, one review binding, one durable ledger.
+
+User decisions taken 2026-08-21 (all four asked before execution):
+
+| Decision | Chosen |
+|---|---|
+| AGY authority | Advisory subagent for both sides; never a seat or verdict source |
+| Non-CLI subsystems | Delete outright; git history is the archive |
+| Python restructure | `scripts/` → `pipeline/`, one `pipeline` command, flat imports preserved |
+| Protocol ceremony | Collapse seats to author/reviewer (highest-risk option, chosen knowingly) |
+
+## 1. Measured baseline
+
+Every number below is a command result, not an estimate.
+
+| Fact | Value | Command |
+|---|---|---|
+| Tracked files | 1678 | `git ls-files \| wc -l` |
+| Python lines | 60,728 | `git ls-files '*.py' \| xargs wc -l` |
+| — `scripts/` | 26,642 | same, scoped |
+| — `tests/` | 29,948 | same, scoped |
+| — `threeway/` | 3,789 | same, scoped |
+| — `tools/` | 349 | same, scoped |
+| Mailbox events | 967 | `ls coordination/mailbox/sent \| wc -l` |
+| — `coordination` chatter | 431 | filename-kind histogram |
+| — `verify-request` | 244 | ditto |
+| — `verification-report` | 211 | ditto |
+| — all other kinds combined | 81 | ditto |
+| Declared event kinds | 25 | `wc -l coordination/mailbox/kinds.txt` |
+| Kinds ever used | 13 | histogram above |
+| Local branches | 110 | `git branch --list \| wc -l` |
+| Worktrees / prunable | 43 / 25 | `git worktree list` |
+| Open PRs | 0 | `gh pr list --state open` |
+| Cursor health | director 564 unread @ cursor=0; director2 424 @ 0; operator2 476 @ 0; operator 52 @ 2026-08-01 | `pipeline-python scripts/status.py snapshot` |
+| Gate state at base | FAIL (0 fatal, 8 advisory, 2 failed review) | same |
+| `check_coordination` latency | 0.75 s | timed run, 2026-08-21 |
+
+### 1.1 Instrument note — the mailbox is NOT archived
+
+`docs/protocol/learning/mailbox-archive-proposal.md` sets the activation
+criterion explicitly: *not* event count, but a named live collector measured
+to exceed a recorded budget. Measured at this base, `check_coordination.py`
+returns in **0.75 s** over 967 events. The criterion is not met, so this
+overhaul does **not** move `coordination/mailbox/sent/`. The corpus stays
+where published refs already point. Recorded because the measurement
+disagreed with the tidier answer.
+
+### 1.2 Both CLIs are present, authenticated, and symmetric
+
+    claude --version   → 2.1.238 (Claude Code)      auth: claude.ai, max
+    codex --version    → codex-cli 0.147.0          auth: ChatGPT
+    agy, claude-agy, codex-agy → present in ~/.local/bin
+
+| Capability | `claude` | `codex` |
+|---|---|---|
+| Headless | `-p/--print` | `exec` |
+| Machine-readable output | `--output-format json\|stream-json` | `--json` (JSONL) |
+| Structured output schema | `--json-schema <schema>` | `--output-schema <FILE>` |
+| Final message to a file | parse `.result` | `-o/--output-last-message <FILE>` |
+| Model selection | `--model` | `-m/--model` |
+| Working root | cwd + `--add-dir` | `-C/--cd` + `--add-dir` |
+| Effect containment | `--permission-mode`, `--allowed-tools` | `-s/--sandbox` |
+| Spend ceiling | `--max-budget-usd` | (none — wall-clock/timeout only) |
+| Session resume | `-r/--resume <id>` | `exec resume <id>` |
+| Project instructions | `CLAUDE.md` | `AGENTS.md` |
+
+This symmetry is what makes a single peer command possible.
+
+## 2. Target architecture
+
+    bin/pipeline                  one entry point; resolves the venv itself
+    pipeline/                     was scripts/; flat modules, uniform main(argv)
+      cli.py                      verb registry and dispatch
+      peer.py                     NEW — claude/codex/agy headless invocation
+    coordination/
+      bin/send-event              kept: hardened writer front door
+      mailbox/sent/               unchanged corpus; new events use new roles
+      peer/                       NEW — committed peer receipts
+    docs/
+      protocol/                   live CLI doctrine only
+      archive/                    historical handoffs, incidents, closeouts
+    AGENTS.md                     the contract, loaded natively by codex
+    CLAUDE.md                     thin adapter: "read AGENTS.md" + Claude deltas
+
+### 2.1 One command instead of an incantation
+
+Today the shortest governed invocation is
+
+    unset GIT_INDEX_FILE
+    coordination/bin/pipeline-python scripts/status.py snapshot
+
+— an interpreter resolver, an environment scrub, and a file path before the
+verb. After:
+
+    pipeline status
+
+`bin/pipeline` performs the `GIT_INDEX_FILE` scrub and the primary-checkout
+venv resolution that `coordination/bin/pipeline-python` does today, so no
+caller has to remember either.
+
+### 2.2 Seats collapse to author and reviewer
+
+Six seat names (`director`, `director2`, `operator`, `operator2`,
+`coordinator`, `coordinator2`) become two roles — **author** and
+**reviewer** — carried alongside the **side** that ran (`claude`, `codex`).
+
+The review binding gets *stronger*, not weaker. Today
+`compact_pair_loop.validate_report` checks a **declared** seat name and a
+**declared** model ID; ARCHITECTURE §9 already concedes "a configured model
+name is runtime evidence, not cryptographic provider attestation". Under the
+new model the reviewer's side and model come from the peer CLI's own JSON
+output, captured in a committed receipt. Declared identity becomes observed
+identity. It is still not attestation — a local receipt is forgeable by
+whoever can write the file — but it is evidence the author did not simply
+type.
+
+The six legacy names stay valid **for historical events only**, at a named
+cutover commit. New events accept `author` and `reviewer` only.
+
+### 2.3 Cursors are deleted, not repaired
+
+Three of four cursors read 0 while reporting 400+ unread; the fourth has not
+moved since 2026-08-01. A mutable per-seat pointer that drifts to zero is a
+worse instrument than no instrument, because it reads *reassuring* when
+broken. Replace "unread" (mutable state) with "open" (derived): unanswered
+verify-requests and failed reports, computed from the ledger every time.
+This removes `coordination/mailbox/seen/`, `consume-events`, `bus_unread.py`,
+`consume_bus.py`, and `mailbox_monitor.py`.
+
+## 3. The joint mechanism — `pipeline peer`
+
+The current cross-app mechanism is a persistent Agent-SDK peer
+(`pipeline-codex-bridge`) started over MCP and addressed with Claude Desktop's
+native `ListAgents`/`SendMessage`. It is desktop-bound, costs a per-instance
+budget, and — by its own documentation — **"reports no delivery ack"**.
+
+Replacement: **one-shot headless invocation of the other CLI, with a receipt.**
+
+    pipeline peer ask codex  --task <id> --prompt-file P [--role reviewer]
+    pipeline peer ask claude --task <id> --prompt-file P [--model opus]
+    pipeline peer ask agy    --task <id> --prompt-file P --role challenge
+    pipeline peer review --base B --head H --to codex
+    pipeline peer receipts --task <id>
+
+Each call writes `coordination/peer/<task>/<seq>-<side>.json`:
+
+    {"task": "...", "seq": 1, "side": "codex", "role": "reviewer",
+     "model_requested": "...", "model_reported": "...",
+     "argv_sha256": "...", "prompt_sha256": "...", "result_sha256": "...",
+     "exit": 0, "started": "...", "duration_s": 93, "cost_usd": null}
+
+Why this is better than the bridge, point by point:
+
+1. **Delivery is acknowledged.** The child's exit code and captured stdout
+   *are* the ack the bridge never had. "Submitted but delivery unknown" — a
+   row in today's OPERATIONS troubleshooting table — stops being reachable.
+2. **One process, one budget, terminates.** No long-lived peer to leak, no
+   duplicate-bridge failure mode, no registration-lag ambiguity.
+3. **The model is observed.** `model_reported` comes from the CLI's own JSON,
+   not from the author's prose.
+4. **Symmetric and direction-free.** The same verb runs from either terminal;
+   `claude` and `codex` are two backends of one interface.
+5. **AGY is a third backend, not a third authority.** `--side agy` dispatches
+   to the existing `claude-agy`/`codex-agy` wrappers (identical signatures,
+   shared `~/.codex/agy-desktop-user-inflight.lock`, so the lane still
+   serialises). Receipts record it as advisory; no verdict path accepts it.
+
+## 4. Staged execution
+
+Each stage is a separately reviewable range. Ordering is chosen so that every
+stage leaves the tree green.
+
+| # | Stage | Shape |
+|---|---|---|
+| 1 | Subtract non-CLI surfaces | delete-only; large negative line count |
+| 2 | `scripts/` → `pipeline/` + `bin/pipeline` | renames + one new module |
+| 3 | `pipeline peer` | new module + tests |
+| 4 | Seat collapse + kind reduction + cursor removal | behaviour change, highest risk |
+| 5 | Doctrine consolidation | AGENTS.md contract, CLAUDE.md adapter, docs/archive |
+| 6 | Repo hygiene | prune worktrees and merged branches |
+| 7 | Verification + Codex review | full suite, gates, different-family review |
+
+## 5. Landing constraints, stated up front
+
+- **Growth budget.** `check_no_ceremony` hard-fails at 100 net Python lines
+  per range and 80 per pre-existing file. Stages 1, 2, 4 and 6 are
+  deletion- and rename-dominated and pass comfortably. Stage 3 introduces a
+  new file, which is exempt from the per-file cap but not the aggregate, so
+  `pipeline/peer.py` plus its dispatch must land inside 100 net lines or as
+  its own sequential range. The ceiling is not amended for this work: the
+  finding at `fec89e52` records why a mechanism that excepts itself proves
+  nothing.
+- **Admission gate.** `scripts/ci_admission_gate.py` blocks any range touching
+  an authority surface without a committed GO/NITS report bound to a
+  `high-risk-control` request. This overhaul touches nearly every listed
+  surface, so **Codex must review it** — and the only different-family
+  reviewer available is Codex. Stage 7 is not optional.
+- **External effects.** Push, merge, and provider launch each need separate
+  live authority. Peer invocation is a provider launch.
+
+## 6. Verification
+
+    pipeline check                      # governance_verify_all aggregate
+    python -m pytest tests -q           # full suite, both before and after
+    pipeline peer review --base <base> --head HEAD --to codex
+
+Report failures with their output; name skips as skips.
+
+
+## 7. Outcome
+
+Five commits, `86146d1f..5c75834a`, **249 files changed, +2,772 / −22,660**.
+
+| # | Commit | What landed |
+|---|---|---|
+| 1 | `ac0ac341` | Non-CLI subtraction: MCP connector, dormant threeway bus, browser lane |
+| 2 | `f7f1c2ad` | `scripts/` → `pipeline/`, `bin/pipeline`, four-seat scheduler removed |
+| 3 | `d2fe72b1` | `pipeline peer` + AGY backend; AGENTS/CLAUDE/ARCHITECTURE/README/OPERATIONS rewritten |
+| 4 | `4c4371fd` | Six seats → author/reviewer, enforced at the writer and the wrapper |
+| 5 | `5c75834a` | The projection must SEE a request assigned to the reviewer |
+
+Verification at head, measured the way CI measures it:
+
+    NO_CEREMONY_BASE=$(git merge-base main HEAD) pytest tests -q
+      1206 passed, 1 xfailed, exit 0        (base was 1713 passed)
+    NO_CEREMONY_BASE=$(git merge-base main HEAD) pipeline check
+      OK, exit 0
+
+The 507-test drop is the deleted subjects' own tests. No surviving test was
+weakened to make the range pass; where a premise died with its subject the
+test was removed, and where a premise changed the test was rewritten to assert
+the new invariant.
+
+### Three findings the work produced
+
+1. **The growth gate's two halves disagreed about file identity.**
+   `_introduced_python` asked Git with `-M5%`, the numstat that measures growth
+   asked with the default 50%, so a rename-plus-rewrite was an arrival to one
+   half and a rename to the other. `bus_unread.py`, which shrank 334 → 147
+   lines, was convicted of "net growth 147". One threshold constant now serves
+   both halves; two controls pin that it removes only false positives.
+
+2. **A compatibility shim turned a fatal control fail-open, and the existing
+   controls caught it.** Resolving frozen manifests through a pre-rename twin
+   first accepted "absent under both prefixes" as "nothing to check" — which is
+   how a deleted manifest passes. Now exactly one match is required.
+
+3. **The collapse reached the writer before it reached the reader.** The first
+   request published as `author → reviewer` was parsed, committed, valid, and
+   invisible to `pipeline status`, because the review projection still matched
+   only `{operator, operator2}`. Found by publishing the range's own review
+   request rather than by reading the diff.
+
+### Cost recorded rather than hidden
+
+Collapsing to two roles makes `reviewer_seat != assigned_operator` true by
+construction, so that control can no longer fail. It is a strict xfail
+carrying its own reasoning, not a deletion. Restoring expressiveness means
+carrying the side in the identity (`reviewer@codex` vs `reviewer@claude`),
+which is a grammar change with its own review.
+
+### Deliberately not done
+
+- **Mailbox not archived.** The archive proposal's activation criterion is
+  collector latency, not event count. `check_coordination` measured 0.75s over
+  967 events; the criterion is not met.
+- **58 merged branches not deleted.** Destructive; needs explicit authority.
+  49 unmerged branches carry unlanded work and must not be touched.
+- **No provider launched.** The peer argv this repository builds is tested;
+  the shape a live `claude` or `codex` emits is parsed defensively but
+  unconfirmed. One authorized round trip per side would settle it.
+
+
+## 8. The review, and what it cost me to be wrong
+
+Codex (`gpt-5.6-sol`) reviewed `86146d1f..4c4371fd` through `pipeline peer ask
+codex` — exit 0, 1942s, receipt `coordination/peer/cli-exclusive-overhaul/0001-codex.json`
+— and returned **FAIL with eight blocking findings**. Every one reproduced.
+
+The first landed on my own verification claim, and it is the one worth
+remembering. `git add -A` swept two untracked skill packs into the range while
+the skill directories they reference stayed untracked, so **"1206 passed"
+described my working tree and not the commit**; an exact-head clone gave
+`2 failed, 1204 passed`. I had run the suite the way CI runs it in every
+respect except the one that mattered — I never ran it against the bytes I was
+asking someone to review. Then I made the same mistake a second time while
+fixing the first, which is why the repair is `.gitignore` plus a test that
+asks Git for its corpus rather than a resolution to be careful.
+
+The other seven, each now closed with the reviewer's own attack as a control:
+
+| # | Defect | Why it mattered |
+|---|---|---|
+| F3 | `NEW_WRITE_SENDERS` restricted only the sender | A hybrid `author → operator` event published; a retired-seat report reached committed state via `git add -f` |
+| F4 | One fixed `codex-last-message.txt` | A run that wrote nothing inherited the previous run's answer and hashed it into a fresh receipt |
+| F5 | `_find_key` read `"model"` at any depth | Echoed output could back-fill the requested model, making the receipt agree with its author by construction |
+| F6 | `--task` unsanitized; `next_seq` counted files | `../mailbox/sent` escaped the receipts root; a sequence gap overwrote a receipt |
+| F7 | The strict xfail set `reviewer` on both sides | It constructed no misassignment and went red only because a *valid* report succeeded |
+| F8 | Both adapters still prescribed Desktop | The canonical entry docs contradicted the contract the range exists to establish |
+| F2 | The reviewer-visibility fix sat outside the reviewed range | Already fixed at `5c75834a`; the next request must name a range containing it |
+
+Two things Codex confirmed survived attack, which is worth as much as the
+findings: the growth-rule accounting (`a rename that genuinely adds 200 lines
+remained refused`) and the manifest matrix (`absent=0 and both=2; symlink and
+traversal rejected`). It also confirmed no code path treats a peer receipt as
+authority.
+
+**Verification now, from a clean clone of the committed bytes** — the standard
+I should have held the first time:
+
+    git clone … && git checkout 782cb724     # 0 untracked
+    pytest tests -q        1223 passed, exit 0
+    pipeline check         OK, exit 0
+    python-growth          2038 added, 19668 deleted, net -17630
+
+One more instrument lesson came out of that clone: it first reported
+`gate-executes-pins FAIL`, which was not the wave gate at all — the clone had
+no `.venv`, `bin/pipeline` silently fell back to a python without pytest, and
+the gate blamed its subject for a missing environment. The fallback now names
+itself.

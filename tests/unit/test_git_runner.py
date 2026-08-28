@@ -8,9 +8,6 @@ from pathlib import Path
 import pytest
 
 import git_runner
-from threeway import gitcas
-
-ROOT = Path(__file__).resolve().parents[2]
 
 
 def _init_repo(repo: Path) -> None:
@@ -97,36 +94,3 @@ def test_run_git_supports_bounded_batch_input(tmp_path: Path) -> None:
         input_data=blob + b"\n",
     )
     assert result.stdout.endswith(b"payload\n")
-
-
-def test_gitcas_env_strips_every_retargeting_variable(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    for name in git_runner.RETARGETING_GIT_VARS:
-        monkeypatch.setenv(name, "/tmp/evil")
-    monkeypatch.setenv("GIT_CONFIG_KEY_0", "core.hooksPath")
-    monkeypatch.setenv("GIT_CONFIG_VALUE_0", "/tmp/evil-hooks")
-    env = gitcas._env()
-    for name in git_runner.RETARGETING_GIT_VARS:
-        assert name not in env, name
-    assert "GIT_CONFIG_KEY_0" not in env
-    assert "GIT_CONFIG_VALUE_0" not in env
-    # The mirrored list must not drift from the canonical one.
-    assert set(gitcas._RETARGETING_GIT_VARS) == set(git_runner.RETARGETING_GIT_VARS)
-
-
-@pytest.mark.parametrize(
-    "relative",
-    ("coordination/bin/claim-lock", "coordination/bin/release-lock"),
-)
-def test_lock_scripts_strip_repo_retargeting_variables(relative: str) -> None:
-    # The lock scripts strip the repo-retargeting set but deliberately keep
-    # the config-selection variables: those carry credential-helper
-    # configuration for the push, and tests inject hermetic identity
-    # through them.
-    text = (ROOT / relative).read_text(encoding="utf-8")
-    for name in git_runner.REPO_RETARGETING_GIT_VARS:
-        assert name in text, (relative, name)
-    for name in git_runner.CONFIG_GIT_VARS:
-        assert name not in text, (relative, name)
-    assert 'unset "$retarget_var"' in text

@@ -36,16 +36,12 @@ htmlcov/
 *.swo
 
 # =============================================================================
-# Governance OS — coordination runtime state
+# Pipeline coordination runtime state
 # These paths hold ephemeral session state that must not be committed.
 # The !.gitkeep rules ensure scaffolding directories persist in the repo.
 # =============================================================================
 
-# Seat read-cursors (seen/<seat>.txt = scalar seq) are TRACKED, not ignored:
-# cursor advances are part of the durable record (the check_coordination
-# "standalone_cursor_commit" advisory exists because they get committed).
-# Seeded at 0 for the default roster; adjust it in scripts/protocol_mailbox.py
-# (SEATS / RECEIVING_SEATS).
+# Historical seat read-cursors are tracked evidence rather than runtime ignores.
 
 # Outgoing mailbox messages (runtime-generated; committed selectively per protocol)
 coordination/mailbox/sent/*
@@ -58,24 +54,13 @@ coordination/presence/*-heartbeat.ts
 coordination/locks/*
 !coordination/locks/.gitkeep
 
-# Threeway ref-bus event blobs (written via git-update-ref; not filesystem files in prod,
-# but guarded here for any local event staging directories)
+# Retired threeway event staging can linger in existing checkouts.
 coordination/threeway/events/*
 !coordination/threeway/events/.gitkeep
 
-# =============================================================================
-# Session / harness state
-# =============================================================================
-
-# Per-seat git index files (created by D-a launcher; never committed)
+# Retired launcher and hook state must remain untracked if locally present.
 .git/index-codex-*
-# Additional provider-local indexes are unsupported.
-# Native worktrees use their ordinary Git index.
-
-# Hook sync markers (regenerated each hook run)
 .claude/hooks/.last-index-sync-*
-
-# State snapshot (gitignored by convention; local only)
 STATE.md
 
 # =============================================================================
@@ -91,9 +76,6 @@ STATE.md
 .pytest_cache/
 .pytest-verify-tmp/
 
-# Provider runtime state belongs outside this repository.
-# Repository-local provider caches must remain untracked by their owners.
-
 # Subagent-driven-development scratch ledger (skill-owned, never committed)
 .superpowers/
 
@@ -108,16 +90,13 @@ STATE.md
 .claude/worktrees/
 .claude/settings.local.json
 
-# Codex hook runtime state (written on every codex run; never committed)
-
 # Local ChatGPT Pro consultation lifecycle metadata; never prompt/response content.
 .codex/runtime/chatgpt-pro-consultations.json
 .codex/runtime/chatgpt-pro-consultations.json.lock
 .codex/runtime/opus-review-receipts/
 .codex/runtime/lane-v-report-publications/
 
-# Retired Claude hook runtime state (the hook layer itself is gone; these linger
-# in existing checkouts and must never be committed)
+# Retired Claude hook files can linger locally and are never active source.
 .claude/hooks/
 
 # Learning-plane episodic index: derived, rebuildable, workspace-scope

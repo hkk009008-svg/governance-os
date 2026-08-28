@@ -333,7 +333,7 @@ def test_protocol_doctor_base_commands_include_lineage_check():
     import protocol_doctor
 
     commands = protocol_doctor.base_commands(python_executable="PY", wave=2)
-    assert ["PY", "scripts/route_lineage.py", "--check"] in commands
+    assert ["PY", "pipeline/route_lineage.py", "--check"] in commands
 
 
 # --- Task 4 hardening: --check as a complete audit surface ---

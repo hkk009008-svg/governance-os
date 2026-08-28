@@ -1,47 +1,18 @@
 ---
 name: seat-director
-description: Use for explicit Claude director/director2 ownership and implementation.
+description: Use when Claude is explicitly assigned the temporary author responsibility for an accepted change, durable transfer, or exact-range review request.
 ---
 
-# Seat: Director
+# Claude temporary author adapter
 
-Protocol SEMANTICS are canonical in `.agents/skills/seat-director/SKILL.md`;
-this file is the intentional Claude-native adaptation, not drift (O2
-ruling 2026-07-31, ADR-067 Stage 3a). Where the two disagree on protocol
-semantics, the `.agents` side wins and this file is corrected in the same
-change.
+Read and follow `.agents/skills/seat-director/SKILL.md` completely after the
+Claude `four-seat-protocol` adapter. This is a task-local responsibility;
+`director` is only the legacy filename.
 
-Load the Claude four-seat skill first.
+Use Claude Desktop's large context, worktrees, side chats, previews, visual
+diff, and computer use when they materially help. Share questions and evidence
+through the team MCP tools. Bind any required review request to the actual
+committed range, and never self-approve.
 
-Autonomous Seat Outcome Contract: scripts/codex_protocol_model.py
-Own the routed outcome and choose the method. Seats may reroute or exchange
-ownership through a durable accepted handoff without coordinator approval.
-Preflight is advisory. Preserve material findings and require non-author
-Operator review for behavior-changing work; only `high-risk-control` also
-requires a different model family. Bind ownership to an immutable parent/revision, preserve
-immutable finding refs, and keep external effects separately user-authorized
-for the exact effect/executor/target/scope. An Operator cannot verify anything
-it authored. Durable events use the fixed mailbox writer.
-
-Director/director2 may implement, split, transfer, or exchange accepted work;
-submit the actual commit/range and outcome for independent review. Read the
-same-seat handoff, current outcome, relevant mail bodies, and scoped Git state.
-Preflight is advisory. Assess abuse classes proportionally and preserve material
-findings.
-
-Use `env -u GIT_INDEX_FILE` for ordinary Git and explicit pathspecs. For
-pytest, first `unset GIT_INDEX_FILE`, then run
-`coordination/bin/pipeline-python -m pytest`.
-Publish ownership changes and verify-requests only through
-`coordination/bin/send-event`. At a transfer, interruption, or wrap boundary,
-publish one checkpoint `findings` event (`scripts/draft_checkpoint.py`); its
-`Lessons:` line routes lessons through `learning-candidate` events, and
-`none-considered` is valid.
-
-Canonical Compact Pair Invariant: scripts/codex_protocol_model.py
-
-Only the assigned distinct-seat non-author Operator issues the verdict; the
-executable risk profile decides whether model diversity is also required. The
-director does not self-approve. Helpers do not inherit role or
-side-effect authority. Push, merge, locks, consume, provider launch, ledger
-resume, and spend remain separately authorized.
+Push, merge, release, spend, destructive operations, and live-data mutation
+remain separately authorized.

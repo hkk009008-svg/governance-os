@@ -1,17 +1,21 @@
-# Codex role agents
+# Optional Codex task specialists
 
-Choose the smallest agent whose explicit role matches the task:
+The Codex desktop app reads this project's `.codex/config.toml`; that file
+connects the shared team transport. These profiles are narrower optional
+subagents, not standing seats or alternate communication channels. Pick one
+only when its specialization helps:
 
-| Agent | Role delta |
+| Prompt | Role delta |
 |---|---|
 | `readiness-bridge` | Read-only orientation without claiming work |
-| `protocol-director` | Accepted outcome ownership and implementation |
-| `protocol-operator` | Accepted implementation or non-author actual-range review |
-| `protocol-coordinator` | Observation, reconciliation, and mediation |
-| `lane-v-verifier` | Read-only advisory review returned to the live Operator |
+| `protocol-director` | Advisory author assistant; the parent app retains responsibility |
+| `protocol-operator` | Advisory review assistant; the assigned app retains the verdict |
+| `lane-v-verifier` | Read-only advisory review returned to the assigned reviewer |
 | `money-gate-reviewer` | Read-only adversarial review of spend enforcement |
 | `amnesiac-prober` | Reduced-context premise attack on one claim sentence |
 
-Canonical policy lives in `scripts/codex_protocol_model.py`; these files contain
-only role-specific deltas. A generic parent-scoped subagent needs no project
-agent extension and never inherits live-role or external-effect authority.
+Canonical policy lives in `pipeline/codex_protocol_model.py`; these files contain
+only role-specific deltas. Every native subagent is an assistant to its parent
+app: it cannot publish a formal artifact or verdict and never inherits
+external-effect authority. Team messages coordinate work but do not turn a
+specialist's output into a verdict.

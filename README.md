@@ -1,95 +1,106 @@
-# Governance OS
+# Pipeline
 
-Pipeline is the governance kernel for a multi-provider AI coding protocol.
-It keeps the minimum durable state needed to coordinate bounded work: mailbox
-events, exact-range review, and separately authorized external effects.
-Codex and Claude share one policy
-(`scripts/codex_protocol_model.py`) and differ only in runtime mechanics.
+Pipeline is a small engineering harness for the Codex, Claude, and AGY
+(Antigravity) desktop apps. The three apps share one repository-scoped MCP
+conversation, direct work together, and use the strengths of each app without
+creating permanent seats or a coordination bureaucracy.
 
-This repository is not the private product application. `evidence-ledger` is
-the bound product target for the current ledger-routed work, while Pipeline
-keeps the shared protocol machinery honest and executable.
+Pipeline is the governance kernel; evidence-ledger is the bound product target
+by default, while `bin/pipeline target` can select another registered target.
 
-The standing pair is director plus operator. Director2, operator2, and
-coordinator are cold capacity, not standing chats. Ordinary reversible local
-work needs no seat, mailbox event, or formal review.
+All three members may reason, direct, implement, test, and challenge. Codex is
+well suited to workspace integration and sustained orchestration; Claude to
+large-context reasoning and independent review; AGY to fast mapping, debugging,
+browser/artifact work, and premise or evasion challenges. These are routing
+hints, not job restrictions.
 
-## Quick Start
+## What is supported
 
-Use the repo venv and the checkout's ordinary Git index:
+- Interactive work happens in the three desktop apps only.
+- App-to-app communication uses `team_status`, `team_send`, and `team_wait`.
+- Repository implementation uses normal Git worktrees, local tools, and tests.
+- Formal author/reviewer responsibilities exist only for a risk-triggered exact
+  range.
+- Legacy mailbox conversation, cursors, seats, and peer receipts remain
+  compatibility evidence; the fixed mailbox writer is reserved for three
+  narrowly governed uses: a required formal review artifact, a real
+  transfer/checkpoint `findings` event, or the governed
+  learning-candidate/disposition lifecycle.
 
-```bash
-PIPELINE_ROOT="$(git rev-parse --show-toplevel)"
-cd "$PIPELINE_ROOT"
-# First session in this checkout — every worktree needs its own venv:
-test -d .venv || (python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt)
-env -u GIT_INDEX_FILE .venv/bin/python scripts/status.py snapshot
-```
+Pipeline does not launch a model provider from the terminal or run another app
+as a headless child. A terminal remains useful for deterministic builds, tests,
+Git, and harness preflight.
 
-For ledger-routed governed work, additionally use the Pipeline guard:
+## Start
 
-```bash
-env -u GIT_INDEX_FILE .venv/bin/python scripts/ledger_start_guard.py --seat director --wave 2
-```
+Open the repository in the desktop app you want to use. The checked-in project
+configuration supplies that app's normal team label:
 
-## How It Works
+| App | Project binding | Member |
+|---|---|---|
+| Codex | `.codex/config.toml` | `codex` |
+| Claude | `.mcp.json` | `claude` |
+| AGY | `.agents/plugins/pipeline-team/plugin.json` + `.agents/plugins/pipeline-team/mcp_config.json` | `agy` |
 
-ARCHITECTURE.md records verified governance-kernel truth. Executable code
-wins when prose drifts. Load-bearing runtime lives under `scripts/`,
-`coordination/`, `.agents/`, and the provider adapters (`.claude/`,
-`.codex/`).
+Antigravity loads the repository-scoped server from that workspace plugin's
+manifest and MCP config. The first time it opens this repository, refresh and
+approve the workspace `pipeline-team` server if prompted. To meet the
+interruption-free team goal, the user must allow `mcp(pipeline-team/*)` in
+Antigravity. That rule is global and name-based, so use the same server name
+only in trusted workspaces. Pipeline reports the state but never edits user
+permissions.
 
-- Seats publish durable events through `coordination/bin/send-event` into
-  `coordination/mailbox/sent/`.
-- Formal review is one committed Compact Pair
-  (`scripts/compact_pair_loop.py`) for an exact Git range. High-risk-control
-  also needs a different model family and an abuse-class assessment.
-- Long-horizon wrap, transfer, or interruption publishes a checkpoint
-  `findings` event. `scripts/draft_checkpoint.py` drafts to scratch only.
-- Lessons route through `learning-candidate` events. Recalled memory and
-  skill-use counts are advisory: they grant no authority and do not write
-  canonical skills.
-- `threeway/` is a dormant signed-bus substrate. The live transport is the
-  mailbox (`governance.toml`).
+In the app, call `team_status`, then use `team_wait` to read pending messages.
+Use `team_send` directly when another member can help or needs an update. Queue
+success is not acknowledgement, acknowledgement is not understanding, and a reply is not
+necessarily substantive. Concurrent instances of one member may receive the
+same row before either receipt commits; deduplicate by message id. Labels are
+not app/model attestation, and no team message grants permission or authority.
 
-Work mode (`explore` / `validate` / `promote`) is orthogonal to review risk
-and grants no authority. See `docs/protocol/work-modes.md`.
-
-## Doc Map
-
-| Need | Read |
-|---|---|
-| Agent contract (start here in a session) | [AGENTS.md](AGENTS.md) |
-| Comprehensive repository and process map | [docs/REPOSITORY-MANUAL.md](docs/REPOSITORY-MANUAL.md) |
-| Task-oriented walkthrough of the common paths | [docs/GUIDEBOOK.md](docs/GUIDEBOOK.md) |
-| Supported desktop apps: setup, strengths, and communication | [docs/protocol/app-quickstart.md](docs/protocol/app-quickstart.md) |
-| Direct Codex/Claude transient task connector | [docs/protocol/claude/task-connector.md](docs/protocol/claude/task-connector.md) |
-| Verified code and topology facts | [ARCHITECTURE.md](ARCHITECTURE.md) |
-| Operating commands and troubleshooting | [OPERATIONS.md](OPERATIONS.md) |
-| User-principal intent for this kernel | [docs/PROGRAM-MANUAL.md](docs/PROGRAM-MANUAL.md) |
-| Decision history | [DECISIONS.md](DECISIONS.md) |
-| Work modes | [docs/protocol/work-modes.md](docs/protocol/work-modes.md) |
-| Learning plane (advisory memory and skills) | [docs/protocol/learning/contract.md](docs/protocol/learning/contract.md) |
-| Codex ledger bridge | [docs/protocol/codex/ledger-cli-adoption.md](docs/protocol/codex/ledger-cli-adoption.md) |
-| Protocol assembly map | [docs/protocol/protocol-assembly-map.md](docs/protocol/protocol-assembly-map.md) |
-
-## Verification
-
-Use a native Git worktree and that checkout's ordinary Git index. Do not
-export a persistent `GIT_INDEX_FILE`.
+For local readiness and repository checks:
 
 ```bash
-env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests -q
-env -u GIT_INDEX_FILE .venv/bin/python scripts/governance_verify_all.py
+bin/pipeline preflight
+bin/pipeline status
+bin/pipeline check --fast
+bin/pipeline check
 ```
 
-`governance_verify_all.py` is the completion-gate aggregate (the old
-`ci_smoke.py` name is a deprecated alias). Smoke stays quiet for the
-reviewed historical commit-SHA baseline. Run
-`python scripts/check_doc_claims.py --sha-refs`
-when you need the full SHA-reference audit report.
+`preflight` checks installed app bundles, all three app bindings (including
+AGY's workspace plugin manifest and MCP config), a real adapter handshake,
+Codex and Claude's native config views, Antigravity's exact workspace
+registration, and its team-tool permission. These are configuration proxies,
+not proof that a desktop window, AGY's Installed MCP Servers panel, or a model
+session is live. The check does not launch a model, send, or spend.
 
-## License
+## Work loop
 
-Proprietary. All rights reserved. Access to this private repository does not
-grant a license.
+1. Read the accepted task and inspect fresh Git state.
+2. Choose the simplest sufficient implementation.
+3. Split only genuinely independent or file-disjoint work.
+4. Use focused tests while iterating; inspect the exact diff.
+5. At the risk boundary, temporarily name an author and a non-author Codex or
+   Claude reviewer. AGY findings remain first-class evidence but cannot be the
+   sole formal verdict.
+6. Run one proportionate final verification pass.
+
+Push, merge, release, paid spend, live-data mutation, and destructive
+operations need exact current task/user authority. Transport state, a green
+test, or an old approval cannot grant it.
+
+Git, tests, and desktop task history are the normal continuation record. Create
+one concise checkpoint only for a real transfer, interruption, compaction, or
+wrap where another member must resume.
+
+## Documentation
+
+- `AGENTS.md` — active team contract
+- `ARCHITECTURE.md` — implemented system and trust boundaries
+- `OPERATIONS.md` — operating procedures and troubleshooting
+- `docs/GUIDEBOOK.md` — practical collaboration patterns
+- `docs/PROGRAM-MANUAL.md` — governance model
+- `docs/REPOSITORY-MANUAL.md` — code and repository map
+- `docs/protocol/peer.md` — desktop-team message contract
+- `docs/protocol/agents/risk-classes.md` — review and effect boundaries
+
+Executable code and current repository state outrank prose when they disagree.

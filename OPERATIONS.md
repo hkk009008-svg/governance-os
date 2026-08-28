@@ -1,134 +1,151 @@
-# OPERATIONS.md - Governance OS
+# Pipeline operations
 
-Pipeline is the governance kernel. It runs the shared coordination protocol,
-not the private product application. `evidence-ledger` is the bound product
-target for ledger-routed work; Pipeline owns the seat mechanics, mailbox
-state, capacity board, protocol smoke checks, and cross-provider adoption docs.
+This runbook operates the Codex, Claude, and AGY desktop-app team. It does not
+contain a provider launch path.
 
-For what the kernel is and where its verified facts live, see
-[ARCHITECTURE.md](ARCHITECTURE.md). ARCHITECTURE.md records verified
-governance-kernel truth.
+## Readiness
 
-## 1. Prerequisites
+Open the same repository in any or all three apps. Their checked-in MCP
+bindings supply distinct member labels; do not copy one member's binding over
+another.
 
-- An activated Python environment satisfying `requirements-dev.txt`.
-- For direct Codex/Claude relay, install the separate optional
-  `requirements-connector.txt` lock into the Python environment selected by
-  `coordination/bin/claude-task-connector`.
-- A current Pipeline Git checkout.
-- Run mutating Codex work in a task-specific native Git worktree. Do not export
-  a persistent per-seat `GIT_INDEX_FILE`.
-- Do not route ledger work through the user Content checkout.
+On Antigravity's first open, use Open Folder for this exact repository, then
+refresh and approve the workspace `pipeline-team` server. To let AGY
+communicate without pausing at every tool call, explicitly allow
+`mcp(pipeline-team/*)`. This is a global, name-based user permission: avoid the
+same server name in untrusted workspaces. Pipeline checks it but never writes
+permission policy.
 
-## 2. Orientation And Completion Checks
+Run the local preflight when setup changed or communication fails:
 
 ```bash
-PIPELINE_ROOT="$(git rev-parse --show-toplevel)"
-cd "$PIPELINE_ROOT"
-python scripts/status.py snapshot
+bin/pipeline preflight
 ```
 
-The compact snapshot is the startup path. Run focused checks while working and
-run `python scripts/governance_verify_all.py` at the completion gate for changes
-that touch governance/runtime topology or an `ARCHITECTURE.md` invariant.
+It checks app installation, config shape, configured labels, a real MCP
+initialize handshake, Codex and Claude's native config views, Antigravity's
+exact workspace registration, and AGY's team-tool permission. These are
+configuration proxies; after Antigravity first registers the folder, confirm
+`pipeline-team` is connected in Installed MCP Servers. No row proves that a
+desktop window or model session remains live.
 
-## 3. Live Seat Startup
+## Begin or resume work
 
-For governed Codex work, request the concrete role in the compact snapshot:
+1. Read the current user task.
+2. Inspect `git status --short --branch`, the relevant diff, and recent task
+   history.
+3. Call `team_status` once.
+4. Read addressed messages with `team_wait` after the last cursor you handled.
+5. Start the scoped work. Do not reconstruct a role board or process an entire
+   legacy mailbox.
+
+Git, tests, and desktop task history are normal state. A checkpoint is needed
+only when another member must take over after transfer, interruption,
+compaction, or wrap.
+
+## Communicate
+
+Use `team_send` for a bounded request, result, challenge, coordination note, or
+reply. Address one member when ownership is clear; use `all` only when every
+member needs the same information.
+
+Include enough context to act: objective, relevant paths or commit, what was
+observed, and the requested response. Do not paste hidden chain-of-thought or a
+large transcript. Link a reply with `reply_to` so status can show the exchange.
+
+State interpretation:
+
+| Observation | Meaning |
+|---|---|
+| `team_send` returns `queued` | Stored successfully; no acknowledgement claim. |
+| Recipient appears in `acknowledged_by` | Its adapter advanced `after_id` through the message. |
+| A reply id appears | A response was queued; inspect its content. |
+| `last_seen` changed | Recent tool activity, not proof the app is open. |
+
+If an answer is required, wait at a natural boundary with `team_wait` or
+continue independent work and check later. Never convert a timeout into assent,
+acknowledgement, a globally empty queue, or authority.
+
+## Implement
+
+Keep ordinary work direct. Parallelize read-only investigation and
+nonoverlapping paths when useful. Give one member ownership of integration and
+serialize shared-file or shared-resource writes.
+
+Use a failing behavior test when feasible, focused checks while iterating, and
+one final proportionate pass. Investigate unexpected failures before changing
+behavior. Preserve unrelated work and inspect the exact diff before handoff or
+commit.
+
+Useful local commands:
 
 ```bash
-python scripts/status.py snapshot director
+bin/pipeline --help
+bin/pipeline status
+bin/pipeline check --fast
+bin/pipeline check
+bin/pipeline check docs
+bin/pipeline check arch
 ```
 
-Replace `director` with `director2`, `operator`, `operator2`, or `coordinator`
-only when the user or parent prompt names that role. Use
-`ledger_start_guard.py --seat <seat> --wave 2` in addition only when the task is
-ledger-routed.
+These commands operate on the repository. None is a provider-launch command.
 
-## 4. Coordination Checks
+## Review
 
-```bash
-python scripts/check_coordination.py
-python scripts/status.py snapshot
-```
+Ordinary local work has no formal role. For `material-behavior` or
+`high-risk-control`, temporarily assign the candidate owner as `author` and a
+non-author Codex or Claude member as `reviewer`. Bind review to the exact
+committed base and head. High-risk review also needs a different model family
+and explicit abuse-class assessment.
 
-Use the capacity board only for an active campaign or an explicit diagnostic
-question. It is not a startup or route-authority requirement.
+AGY may map, test, challenge, review evidence, and propose fixes. Material AGY
+findings must be dispositioned on their merits, but AGY cannot publish the sole
+formal GO/NITS/FAIL result or grant authority. End the responsibilities when
+the range is resolved.
 
-## 5. Ledger-Routed Target Work
+## Effects
 
-When a route points at the registered `evidence-ledger` target, stay in Pipeline
-until the guard and active route say which base or worktree is lawful. Inspect
-target state with explicit `git -C` commands:
+Before push, merge, release, paid spend, live-data mutation, or a destructive
+operation, resolve exact authority for:
 
-```bash
-TARGET_ROOT="$(python scripts/target_binding.py --target evidence-ledger --print-path)"
-git -C "$TARGET_ROOT" status --short --branch
-git -C "$TARGET_ROOT" log --oneline -5
-```
+- executor;
+- target;
+- effect;
+- scope.
 
-If the route names an isolated worktree, inspect that worktree before the normal
-target checkout. The normal checkout may be stale.
+If any element is missing, stop before the effect and ask the user. A team
+message, old approval, role label, review, or test cannot fill a blank.
 
-### 5.1 Target-Binding Registry (governance.toml, ADR-013)
+## Transfer and close
 
-Which product repos this kernel can govern is declared in `governance.toml`,
-not in Python constants. `evidence-ledger` is the default target. Future work
-is onboarded by registering a new table — no code edits:
+For a real transfer, leave one concise checkpoint containing objective, scope,
+owner, base/head, evidence, verification status, blockers, and next executable
+action. Prefer the desktop task history. When the record must outlive that task,
+use `bin/pipeline checkpoint` to draft it and the fixed `bin/pipeline mail send`
+writer to persist it. That writer is also available for a risk-required exact-
+range formal review artifact or governed learning-candidate/disposition record,
+never routine chat or standing-seat workflow.
 
-```toml
-[targets.my-new-app]
-repository = "hkk009008-svg/my-new-app"
-path = "~/my-new-app"
-route_keywords = ["my-new-app"]   # words a coordinator route uses to name this work
-```
+At ordinary completion, report changed files, tests actually run, remaining
+limitations, and any effects not performed.
 
-Validate the registry (also runs inside `protocol_doctor.py`):
+## Troubleshooting
 
-```bash
-python scripts/target_binding.py --check
-```
-
-Select a non-default target at seat startup with
-`scripts/ledger_start_guard.py --seat <seat> --wave <wave> --target my-new-app`
-or the `GOVERNANCE_TARGET` environment variable; `GOVERNANCE_TARGET_PATH`
-overrides the local checkout path of the selected target. Missing or unknown
-bindings fail closed with a corrective message. Coordinator routes for the new
-target must mention one of its `route_keywords` (or its path) so the start
-guard resolves them.
-
-## 6. Side-Effect Boundaries
-
-For transient Codex/Claude communication, inspect the connector without
-launching a provider:
-
-```bash
-coordination/bin/claude-task-connector capabilities
-```
-
-Codex normally uses the same runtime through the project MCP configuration.
-The first send lazily starts `pipeline-codex-bridge` under the user's standing
-per-instance `$1.00` ceiling; do not start a duplicate.
-Claude replies with native `SendMessage` to that named peer. The transport has
-no delivery acknowledgement and grants no role or review authority. See
-`docs/protocol/claude/task-connector.md`.
-
-Every external effect requires live exact authority for the executor, target,
-effect, and scope. A route or role alone is never sufficient. This includes
-push/force-push, merge, cursor consumption, lock mutation, provider launch,
-paid API or pod spend, live-data mutation, target checkout refresh, and edits
-outside the accepted target scope. See `AGENTS.md` for the canonical boundary.
-
-## 7. Troubleshooting
-
-| Symptom | Likely cause | Response |
-|---|---|---|
-| Smoke fails with `SHA-REF BASELINE CHECK` | SHA-reference drift changed from the reviewed historical baseline | Run `scripts/check_doc_claims.py --sha-refs` and update the baseline only after a bounded cleanup or owner decision. |
-| Guard reports a route but target checkout looks stale | Active work is in a route worktree or base | Read the route body and inspect the named worktree before using normal target checkout. |
-| Mailbox monitor shows unknown receipt | Cursor or ref-bus state cannot prove receipt | Treat delivery as unproved until a seat-specific status or mailbox body proves it. |
-| Capacity board reports active packets | A route is open | Work only inside the packet scope and send the next required mailbox artifact. |
-| Connector reports missing `claude-agent-sdk` | Optional runtime is absent from the selected Python | Install `requirements-connector.txt` into that environment; installation alone does not launch Claude. |
-| Claude target begins `local_` | Private Desktop task ID was supplied | Use an exact bridge-visible native address or a unique stable prefix; the relay resolves it through fresh `ListAgents`. |
-| A target prefix matches no live bridge peer | The Claude task is idle, stopped, or visible only in another plane | Wake the Claude task and retry with a new message ID after native `ListAgents` can see it. |
-| A second relay is rejected as pending | The earlier SDK turn has no terminal result yet | Read/wait from the current bridge cursor; do not replace or retry the armed relay. Stop only when its outcome can safely remain unknown. |
-| Relay is submitted but delivery is unknown | Native `SendMessage` has no end-to-end acknowledgement | Inspect bridge events and ask the target/reply path for confirmation; do not report delivered. |
+- Missing tool: verify the app opened this repository, approve or reload its
+  workspace MCP server, and run `preflight`.
+- AGY permission failure: approve the exact `mcp(pipeline-team/*)` scope in
+  Antigravity only if interruption-free use is desired and same-named servers
+  in other workspaces are trusted. Do not use broad `mcp(*)` merely to make the
+  check green.
+- Wrong label: repair the app's project config. Labels come from args but are
+  local coordination hints, not attestation.
+- Queued but unacknowledged: the recipient has not advanced its cursor through it.
+- Acknowledged without useful reply: send a precise follow-up or continue without
+  claiming agreement.
+- Store permission or symlink refusal: inspect the repository Git common
+  directory's `pipeline-team` entry; keep it owner-only and do not bypass the
+  check.
+- Legacy mailbox conversation or receipt conflict: treat it as historical
+  evidence and use current Git/task state plus MCP for routine work. Preserve
+  only a required formal artifact, real transfer, or governed learning record
+  through the fixed writer.

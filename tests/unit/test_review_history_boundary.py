@@ -18,7 +18,7 @@ import check_coordination  # noqa: E402
 def test_manifest_is_the_loaded_boundary() -> None:
     """Migration equality: loaded constants equal the manifest bytes."""
     payload = json.loads(
-        (_REPO_ROOT / "scripts/baselines/review_history_boundary.json").read_text(
+        (_REPO_ROOT / "pipeline/baselines/review_history_boundary.json").read_text(
             encoding="utf-8"
         )
     )
@@ -47,7 +47,12 @@ def test_manifest_is_the_loaded_boundary() -> None:
         for ref, digest in payload["pre_cutover_invalid_requests"].items()
     }
     # The frozen exception manifest it names must exist and stay distinct.
-    frozen = _REPO_ROOT / payload["frozen_exception_manifest"]
+    # The manifest declares itself one-way ("never edit in place"), so its
+    # reference still carries the pre-rename scripts/ prefix; the projection
+    # normalizes that reference rather than rewriting frozen provenance.
+    frozen = _REPO_ROOT / check_coordination._normalize_archive_name(
+        payload["frozen_exception_manifest"]
+    )
     assert frozen.is_file()
     assert frozen.name != "review_history_boundary.json"
 
@@ -73,7 +78,7 @@ def test_manifest_is_the_loaded_boundary() -> None:
 def test_loader_fails_closed(tmp_path: Path, mutate) -> None:
     manifest = tmp_path / "review_history_boundary.json"
     manifest.write_text(
-        (_REPO_ROOT / "scripts/baselines/review_history_boundary.json").read_text(
+        (_REPO_ROOT / "pipeline/baselines/review_history_boundary.json").read_text(
             encoding="utf-8"
         ),
         encoding="utf-8",
@@ -94,4 +99,4 @@ def test_boundary_shas_live_only_in_baselines_not_in_adapter_prose() -> None:
         "e0fbefdb56af03b8c04b6df58245f7533a3d83c0",
     ):
         assert sha not in adapter
-    assert "scripts/baselines/review_history_boundary.json" in adapter
+    assert "pipeline/baselines/review_history_boundary.json" in adapter

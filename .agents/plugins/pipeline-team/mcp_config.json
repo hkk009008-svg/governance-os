@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "pipeline-team": {
+      "command": "./bin/pipeline",
+      "args": ["team", "serve", "--member", "agy"],
+      "cwd": "."
+    }
+  }
+}

@@ -1,3 +1,16 @@
+# Every kind a committed event may PARSE as. Twenty-five names appear here
+# because committed history contains them; thirteen were ever used, and
+# removing a name would make its historical events unreadable, which is a
+# history rewrite.
+#
+# What may be WRITTEN is a much smaller set, and it is enforced in code rather
+# than here: mailbox_writer.NEW_WRITE_KINDS admits five (decision, findings,
+# learning-candidate, verification-report, verify-request). Formal artifacts
+# use author/reviewer; checkpoints and learning records use codex/claude/agy.
+# Durable events persist state transitions; conversation goes through the
+# native `team_send`/`team_wait` tools.
+#
+# The loader skips comment and blank lines (protocol_mailbox.load_known_kinds).
 acknowledgement
 convergence
 coordination

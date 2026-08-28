@@ -1,4 +1,4 @@
-"""Unit tests for scripts/check_arch_freshness.py — Last-verified stamp gate.
+"""Unit tests for pipeline/check_arch_freshness.py — Last-verified stamp gate.
 
 Tests the pure `arch_freshness_violation(old_text, new_text) -> bool` helper.
 No git fixture needed — the function is hermetic over string inputs.

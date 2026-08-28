@@ -10,21 +10,21 @@
 
 ## Canonical verdict vocabulary (read first)
 
-One enum, three values, used verbatim in the RESULT SCHEMA below and as the
-machine token everywhere: **`pass` | `issues` | `unable_to_verify`**.
+One enum, three values: **`pass` | `issues` | `unable_to_verify`**.
 
 - **Human render (prose only — never a second encoding):** `pass` = ✅ ;
   `issues` = ⚠️ (worst severity minor) / ❌ (worst severity critical or important) ;
   `unable_to_verify` = ⛔.
-- **Seat shorthand maps 1:1:** GO = `pass` · NITS = `issues` (all minor) ·
-  FAIL = `issues` (≥1 critical/important) · RE-DISPATCH/ESCALATE = `unable_to_verify`.
-- **Severity is a separate axis** (`issues[].severity` ∈ critical/important/minor). A
-  single reviewer's verdict is **binary** (`pass`/`issues`); the operator's synthesis
-  derives the band from the merged `issues[].severity`. `unable_to_verify` is
+- **Formal publication maps 1:1:** GO = `pass` · NITS = `issues` (all minor) ·
+  FAIL = `issues` (at least one critical/important). `unable_to_verify` leaves
+  the range unjudged and requires a repaired environment or input.
+- **Severity is a separate axis** (`critical` / `important` / `minor`). A
+  single reviewer's verdict is **binary** (`pass`/`issues`); the formal reviewer
+  derives the publication band from the worst finding. `unable_to_verify` is
   **orthogonal to severity** — it is a property of the verification *run*, never a defect.
 - **`unable_to_verify` MUST NEVER become a `REMEDIATION-INVENTORY.md` row `status`** — it
   would silently bypass `wave_gate_check.py`'s blocking logic (ADR-027). It is a
-  reviewer/operator verdict only; the row stays in its prior state (typically `open`).
+  review outcome only; the row stays in its prior state (typically `open`).
 
 ## Independence + verify-before-asserting (include verbatim in EVERY dispatched reviewer prompt)
 
@@ -34,71 +34,31 @@ machine token everywhere: **`pass` | `issues` | `unable_to_verify`**.
 - **Verify before asserting (CC-2).** Before claiming any symbol / file / line exists,
   `grep`/Read to confirm it against the real bytes. A confident "X is a bug" you have not
   verified is a hallucination — verify it, or label the claim unverified.
-- **Dispatch on Opus.** A high-quality review is partly a function of reviewer capability;
-  the standing subagent-model directive applies to reviewer subagents too.
+- Use the strongest available native review model proportionate to the risk;
+  do not hardcode a provider launch or a model version into the evidence.
 
 ## Git hygiene (include verbatim in EVERY dispatched prompt)
 
 - Prefix EVERY git invocation with `env -u GIT_INDEX_FILE ` as a defense
-  against stale ambient state from retired tooling. No current seat owns a
-  per-seat index; the unset form uses the native index of the current worktree.
+  against stale ambient state from retired tooling. No current workflow owns a
+  separate role index; the unset form uses the native index of the current worktree.
 - Never run state-changing git (add/commit/checkout/stash/restore/read-tree
   without explicit instruction). Read-only git (show/log/diff A..B/grep/
   rev-parse/ls-tree) plus the prefix is always safe.
 - The Evidence-preamble git calls below (`rev-parse` / `status --short` / `show` /
   `diff A..B` / `cat-file -e`) are all read-only and obey this same prefix; they
   introduce no state-changing git.
-- For Lane V, a named commit or prose-only event is not trigger authority.
+- For formal review, a named commit or prose-only event is not trigger authority.
   Validate only parent-supplied structural authority; never invent trigger
   authority or reconstruct missing fields.
 
-## RESULT SCHEMA (emit verbatim as the LAST thing in your reply)
+## Output contract
 
-After your prose report, emit ONE fenced ```json block as the LAST thing in your reply,
-conforming to this shape. The prose is for the human reader; this block is for safe
-machine consumption and serializes the EXECUTED evidence (it is not a status assertion —
-ADR-028). Emitting it is MANDATORY for every reviewer dispatch.
-
-```json
-{
-  "schema_version": "reviewer-result/1",
-  "role": "spec | code_quality",
-  "verdict": "pass | issues | unable_to_verify",
-  "reviewed_commit": "<SHA the dispatch named as under review>",
-  "reviewed_head": "<git rev-parse HEAD — what you actually inspected>",
-  "working_tree_clean": true,
-  "commands": [
-    {"command": "<exact command run>", "exit_code": 0, "summary": "<one line, e.g. 12 passed in 3.4s>"}
-  ],
-  "issues": [
-    {"severity": "critical | important | minor", "file": "<path>", "line": 0,
-     "requirement": "<enumerated id | unlisted>", "finding": "<what is wrong>"}
-  ],
-  "commit_trailer": {"present": true,
-                     "expected": "Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>",
-                     "observed": "<verbatim trailer line | null>"},
-  "unverifiable_reason": null,
-  "blocked": null
-}
-```
-
-Invariants:
-- `pass` ⇒ `issues` is empty. `issues` ⇒ ≥1 entry.
-- `unable_to_verify` ⇒ `issues` is EMPTY (the code is unjudged), `unverifiable_reason` ∈
-  {`U1`,`U2`,`U3`,`U4`,`U5`} (see the Evidence preamble), and `blocked` is a non-null object
-  naming the failing command. Never record a defect under `unable_to_verify`.
-- `reviewed_head != reviewed_commit` ⇒ forced `unable_to_verify` with
-  `unverifiable_reason: "U4"` — you cannot prove you read the right code.
-- `working_tree_clean: false` co-occurs ONLY with `unable_to_verify`
-  (`unverifiable_reason: "U3"`); a `pass` requires a clean tree over the reviewed paths.
-- Every command you relied on appears in `commands[]` with its real `exit_code`. A pytest
-  run's `summary` is the exact pytest tail line, never a paraphrase.
-- A W2 independent-pass find that is not tied to an enumerated requirement sets
-  `issues[].requirement: "unlisted"`.
-- The word cap (in the sub-templates) applies to PROSE only — this json block is exempt.
-
-> **Agents-tree note:** there is no `docs/templates/agents/reviewer.md` today. If one is ever
-> created, it MUST carry this RESULT SCHEMA section verbatim (two-tree verbatim-per-file rule).
+Report findings first in severity order from the actual diff, then the reviewed
+range, exact commands and results, verdict, uncertainty, and next action. `pass` has no findings;
+`issues` names at least one evidenced defect; `unable_to_verify` names the exact
+failed precondition and leaves the code unjudged. Formal GO/NITS/FAIL publication
+uses the repository's verification-report format, not a second result schema.
 
 ## Evidence preamble — RUN every command, paste output verbatim (do NOT assert; ADR-028)
 
@@ -116,16 +76,12 @@ defects against an unverified tree, and do NOT run the independent pass.
 4. **Provenance** — read each file you assert about FROM the commit
    (`env -u GIT_INDEX_FILE git show <SHA>:<path>`), not an editor buffer. State
    "files inspected via `git show <SHA>:…` — provenance = reviewed commit".
-5. **Commit trailer (W4)** — `env -u GIT_INDEX_FILE git show -s --format=%(trailers) <SHA>` →
-   record the literal trailer block into `commit_trailer.observed`; `expected` is the
-   standard `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>` line.
-   **Absent ≠ unreadable**: a missing trailer is `present:false`; an unreadable commit is U5.
-6. **Tests** — run exactly the dispatch's mandated `… pytest … -q`; paste the LITERAL summary
+5. **Tests** — run exactly the dispatch's mandated `… pytest … -q`; paste the LITERAL summary
    line (`N passed[, M failed][, K skipped][, J xfailed]`) and the pytest EXIT CODE. Any
    `skipped` / `xfailed` / `xpassed` / `error` token is FLAGGED (invisible-green ceremony). If
    `.venv` is missing or tests cannot collect for ENVIRONMENT reasons (not a code defect) →
    `unable_to_verify` (**U1** no interpreter / **U2** tests-cannot-run), NOT a defect.
-7. **Re-run the pins (CRITICAL — the anti-ceremony keystone)** — for each pin selector the
+6. **Re-run the pins (CRITICAL — the anti-ceremony keystone)** — for each pin selector the
    dispatch/implementer names, run it with `--runxfail`, paste the summary, AND confirm a
    one-fact mutation flips it RED (non-vacuity). A pin that passes on reverted code is not
    evidence (ADR-027). A green suite that does not exercise the changed symbols is not `pass`.
@@ -147,7 +103,7 @@ the code is unjudged. Never conflate the two.
 
 ```
 You are reviewing whether Task <N>'s implementation matches its spec.
-Include the Independence, Git-hygiene, RESULT SCHEMA, and Evidence-preamble
+Include the Independence, Git-hygiene, Output contract, and Evidence-preamble
 blocks above VERBATIM. **Do NOT trust the implementer's report** — read the code.
 
 ## What Was Requested
@@ -183,19 +139,17 @@ Prose (for the human): ✅ Spec compliant / ❌ Issues — list with file:line r
 this is NOT an implementation NO-GO (the code is unjudged); re-dispatch in a fixed env.
 - Evidence block (verbatim): REVIEWED_HEAD; `git status --short` result; provenance
   statement; the literal pytest summary + exit code; the `--runxfail` pin result + mutation
-  check; the trailer line. (NOT counted toward the word cap.)
-
-Then emit the RESULT SCHEMA json block (role: "spec") as the LAST thing in your reply.
+  check. (NOT counted toward the word cap.)
 
 Under <N> words (prose only — the pasted Evidence block, the unable_to_verify precondition
-output, and the final RESULT SCHEMA json do NOT count toward the cap).
+output does not count toward the cap).
 ```
 
 ## Code quality reviewer prompt template
 
 ```
 Code quality review for Task <N> (commit `<SHA>`).
-Include the Independence, Git-hygiene, RESULT SCHEMA, and Evidence-preamble blocks above
+Include the Independence, Git-hygiene, Output contract, and Evidence-preamble blocks above
 VERBATIM. Run the Evidence preamble first; if a precondition fires, return unable_to_verify.
 
 **WHAT_WAS_IMPLEMENTED:** <one-paragraph summary>
@@ -212,35 +166,29 @@ In addition to standard concerns, check:
 - <task-specific concern 1> (e.g., concurrency if threading is involved)
 - <task-specific concern 2> (e.g., public API stability if refactor)
 - defects beyond the listed concerns: do one independent pass and report any you find (or none).
-- Commit trailer: the `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>` line is present
-  and well-formed.
-
 Report: Strengths, Issues (Critical / Important / Minor), Assessment.
 If verification could not run (U1–U5), report Assessment = unable_to_verify with the failing
 precondition + command output, and report NO Issues (the code is unjudged, not defective).
-Then emit the RESULT SCHEMA json block (role: "code_quality"); map Critical/Important/Minor →
-critical/important/minor in `issues[].severity`.
 
 Under <N> words (prose only — the pasted Evidence block, the unable_to_verify precondition
-output, and the final RESULT SCHEMA json do NOT count toward the cap).
+output does not count toward the cap).
 ```
 
-## Reviewer-conflict resolution (operator synthesis)
+## Reviewer-conflict resolution
 
-When the spec reviewer and the code-quality reviewer — or two parallel Lane-V passes — disagree
-on the SAME diff, the operator's synthesis resolves to the **more conservative** verdict:
-`issues` dominates `pass`; `unable_to_verify` dominates BOTH (you cannot synthesize a clean
-verdict from a run that did not conclude). A genuine spec-vs-quality CONTRADICTION (one says
-compliant, the other finds a critical defect) **escalates** to the receiving seat for
-adjudication — it never auto-merges to `pass`. The operator's verdict is its own cold-context
-synthesis, not a passthrough of either subagent's json.
+When the spec reviewer and the code-quality reviewer — or two parallel advisory passes — disagree
+on the same diff, the formal reviewer investigates the conflict against the actual range. An
+unresolved evidenced issue prevents a clean `pass`. `unable_to_verify` means only that one pass
+was inconclusive; it neither erases a finding nor overrides a separate conclusive review. A
+genuine spec-vs-quality contradiction must be adjudicated before publication. The formal verdict
+is an independent assessment, not a passthrough of either helper's prose.
 
 ## Hardening notes — provenance for the reviewer-template additions
 
-The Canonical-vocabulary, Independence, RESULT SCHEMA, Evidence-preamble (incl. pin
+The Canonical-vocabulary, Independence, Output contract, Evidence-preamble (including pin
 re-execution), Reviewer-conflict, and 3-way-verdict additions are codified per ADR-032,
 from the adversarial design pass `wf_b89b9c6c-128` over an external "Level 4 of 5" assessment of
-the live Slice-2 verification dispatch. The keystone is Evidence-preamble step 7 (re-run the
-implementer's pins with `--runxfail` + a mutation non-vacuity check): a machine-readable result
-schema of *pasted* evidence is ceremony unless the pins are actually executed (ADR-027/028). If
-you trim this template, do NOT trim the four "include verbatim" blocks or step 7.
+the live Slice-2 verification dispatch. The keystone is Evidence-preamble step 6 (re-run the
+implementer's pins with `--runxfail` + a mutation non-vacuity check): a report of
+*pasted* evidence is ceremony unless the pins are actually executed (ADR-027/028). If
+you trim this template, do NOT trim the four "include verbatim" blocks or step 6.

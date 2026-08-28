@@ -10,6 +10,7 @@ import tarfile
 import pytest
 
 import check_coordination as cc
+import mailbox_admission
 import status
 
 
@@ -30,13 +31,19 @@ def _supply_synthetic_active_failure_cutover(
     learning_cutover = cc._LEARNING_HISTORY_CUTOVER_COMMIT
     review_state_cutover = cc._REVIEW_STATE_CUTOVER_COMMIT
     legacy_cutover = cc.compact_pair_loop.LEGACY_VERBOSE_CUTOFF
+    remediation_cutover = cc.compact_pair_loop.REMEDIATION_BASE_CUTOFF
+    desktop_cutover = mailbox_admission.DESKTOP_WRITE_CUTOVER_COMMIT
     real_projection_build = cc.git_commit_projection.CommitGraphProjection.build
+    synthetic_desktop_roots: set[Path] = set()
 
     class SyntheticCutoverProjection:
-        def __init__(self, projection):
+        def __init__(self, projection, *, synthetic_desktop: bool):
             self._projection = projection
+            self._synthetic_desktop = synthetic_desktop
             self.identity = projection.identity
-            self.object_types = projection.object_types
+            self.object_types = dict(projection.object_types)
+            if synthetic_desktop:
+                self.object_types[desktop_cutover] = "commit"
             self.parents = projection.parents
 
         @property
@@ -47,12 +54,12 @@ def _supply_synthetic_active_failure_cutover(
             return self._projection.matches_root(root)
 
         def require_commit(self, value, label):
-            if value in {review_cutover, learning_cutover, review_state_cutover}:
+            if value in {review_cutover, learning_cutover, review_state_cutover} or (self._synthetic_desktop and value == desktop_cutover):
                 return self.head
             return self._projection.require_commit(value, label)
 
         def is_ancestor(self, ancestor, descendant):
-            if ancestor in {review_cutover, learning_cutover, review_state_cutover}:
+            if ancestor in {review_cutover, learning_cutover, review_state_cutover} or (self._synthetic_desktop and ancestor == desktop_cutover):
                 ancestor = self.head
             return self._projection.is_ancestor(ancestor, descendant)
 
@@ -74,19 +81,77 @@ def _supply_synthetic_active_failure_cutover(
             root, "cat-file", "-e", f"{review_cutover}^{{commit}}"
         ).returncode != 0:
             synthetic_roots.add(root)
+        synthetic_desktop = real_projection_git(
+            root, "cat-file", "-e", f"{desktop_cutover}^{{commit}}"
+        ).returncode != 0
+        if synthetic_desktop:
+            synthetic_desktop_roots.add(root)
         candidates = set(candidate_object_ids) - {
             review_cutover,
             learning_cutover,
             review_state_cutover,
             legacy_cutover,
+            remediation_cutover,
         }
-        return SyntheticCutoverProjection(
-            real_projection_build(repo_root, candidates, **kwargs)
-        )
+        if synthetic_desktop:
+            candidates.discard(desktop_cutover)
+        projection = real_projection_build(repo_root, candidates, **kwargs)
+        return SyntheticCutoverProjection(projection, synthetic_desktop=synthetic_desktop)
 
     def projection_git(repo_root: Path, *arguments: str):
         root = Path(repo_root).resolve()
         inside_fixture = root.is_relative_to(tmp_path.resolve())
+        if (
+            inside_fixture
+            and root in synthetic_desktop_roots
+            and arguments
+            == (
+                "archive",
+                "--format=tar",
+                desktop_cutover,
+                "coordination/mailbox/sent",
+            )
+        ):
+            return real_projection_git(
+                root,
+                "archive",
+                "--format=tar",
+                "HEAD",
+                "coordination/mailbox/sent",
+            )
+        if (
+            inside_fixture
+            and root in synthetic_desktop_roots
+            and arguments
+            == (
+                "ls-tree",
+                "-r",
+                "-z",
+                desktop_cutover,
+                "--",
+                "coordination/mailbox",
+            )
+        ):
+            return real_projection_git(
+                root,
+                "ls-tree",
+                "-r",
+                "-z",
+                "HEAD",
+                "--",
+                "coordination/mailbox",
+            )
+        if (
+            inside_fixture
+            and root in synthetic_desktop_roots
+            and len(arguments) >= 6
+            and arguments[:4]
+            == ("rev-list", "--reverse", "--topo-order", "--full-history")
+            and arguments[4].startswith(f"{desktop_cutover}..")
+        ):
+            return subprocess.CompletedProcess(
+                args=arguments, returncode=0, stdout=b"", stderr=b""
+            )
         if (
             inside_fixture
             and arguments
@@ -174,6 +239,45 @@ def _supply_synthetic_active_failure_cutover(
         """Keep the learning cutover synthetic while exposing review-cutover failure."""
 
         root = Path(repo_root).resolve()
+        if arguments == (
+            "archive",
+            "--format=tar",
+            desktop_cutover,
+            "coordination/mailbox/sent",
+        ):
+            return real_projection_git(
+                root,
+                "archive",
+                "--format=tar",
+                "HEAD",
+                "coordination/mailbox/sent",
+            )
+        if arguments == (
+            "ls-tree",
+            "-r",
+            "-z",
+            desktop_cutover,
+            "--",
+            "coordination/mailbox",
+        ):
+            return real_projection_git(
+                root,
+                "ls-tree",
+                "-r",
+                "-z",
+                "HEAD",
+                "--",
+                "coordination/mailbox",
+            )
+        if (
+            len(arguments) >= 6
+            and arguments[:4]
+            == ("rev-list", "--reverse", "--topo-order", "--full-history")
+            and arguments[4].startswith(f"{desktop_cutover}..")
+        ):
+            return subprocess.CompletedProcess(
+                args=arguments, returncode=0, stdout=b"", stderr=b""
+            )
         if arguments == ("rev-list", learning_cutover):
             return real_projection_git(root, "rev-list", "HEAD")
         if arguments == (
@@ -216,7 +320,7 @@ def _seed_coordination(
     seen.mkdir(parents=True)
     for seat in cc.ROLES:
         (seen / f"{seat}.txt").write_text("0", encoding="utf-8")
-    baselines = tmp_path / "scripts/baselines"
+    baselines = tmp_path / "pipeline/baselines"
     baselines.mkdir(parents=True)
     (baselines / "lane_v_reports_pre_v3.json").write_text(
         json.dumps(
@@ -441,10 +545,12 @@ def test_status_snapshot_reuses_one_committed_mailbox_projection(
 
     monkeypatch.setattr(cc, "_committed_mailbox_projection", counted_projection)
 
-    snapshot = status.collect_orientation_snapshot(root, "operator")
+    snapshot = status.collect_orientation_snapshot(root)
 
     assert calls == [root.resolve()]
-    assert snapshot["projection"]["head"] == _git(root, "rev-parse", "HEAD")
+    assert snapshot["formal_review"]["projection"]["head"] == _git(
+        root, "rev-parse", "HEAD"
+    )
 
 
 def test_live_seat_event_without_terminal_trigger_heading_is_accepted(tmp_path: Path):
@@ -519,36 +625,6 @@ def test_scalar_cursor_without_bus_reports_mailbox_fallback_unread(
     ]
     assert unread == ["operator: 1 unread event(s) via mailbox-fallback"]
     assert not [issue for issue in issues if issue.kind == "transport_incoherent"]
-
-
-def test_partial_bus_refs_are_fatal_transport_incoherence(tmp_path: Path) -> None:
-    coord = _seed_coordination(tmp_path)
-    # Partial-cutover incoherence only exists under a declared signed-bus
-    # transport; the mailbox default never consults these refs.
-    (tmp_path / "governance.toml").write_text(
-        '[coordination]\ntransport = "signed-bus"\n', encoding="utf-8"
-    )
-    _git(tmp_path, "init", "-q")
-    _git(tmp_path, "config", "user.name", "Coord Test")
-    _git(tmp_path, "config", "user.email", "coord@example.invalid")
-    (tmp_path / "seed.txt").write_text("seed\n", encoding="utf-8")
-    _git(tmp_path, "add", "seed.txt")
-    _git(tmp_path, "commit", "-q", "-m", "seed")
-    _git(
-        tmp_path,
-        "update-ref",
-        "refs/threeway/cursors/operator",
-        _git(tmp_path, "rev-parse", "HEAD"),
-    )
-
-    issues = cc.run(coord, now="2026-07-17T02:00:00Z", docs_root=tmp_path / "docs")
-
-    fatals = [
-        issue for issue in issues
-        if issue.kind == "transport_incoherent" and "operator" in issue.message
-    ]
-    assert fatals
-    assert all(issue.severity == "FATAL" for issue in fatals)
 
 
 def test_review_projection_failure_is_not_an_empty_pending_queue(
@@ -940,10 +1016,6 @@ def test_malformed_or_mismatched_report_does_not_clear_pending(
         (request_path, request_commit)
     ]
     assert state.failed == ()
-    snapshot = status.collect_orientation_snapshot(root, "operator")
-    assert snapshot["current_request"]["path"] == request_path
-    assert snapshot["current_request"]["commit"] == request_commit
-    assert snapshot["next_action"] == "operator reviews the exact committed request"
 
 
 def test_pending_request_projects_the_range_a_reviewer_must_know(
@@ -966,13 +1038,6 @@ def test_pending_request_projects_the_range_a_reviewer_must_know(
     assert (pending.reviewed_base, pending.reviewed_head) == (base, head)
     assert pending.reviewed_repository == str(root)
 
-    snapshot = status.collect_orientation_snapshot(root, "operator")
-    current = snapshot["current_request"]
-    assert (current["reviewed_base"], current["reviewed_head"]) == (base, head)
-    # Against str(root), not against `pending`. Comparing the two would compare
-    # a shared producer to itself: hardcoding None in both constructors, or a
-    # wrong literal in both, left every coordination test green.
-    assert current["reviewed_repository"] == str(root)
 
 
 def test_an_invalidated_remediation_request_still_carries_its_range(
@@ -1213,14 +1278,14 @@ def test_explicit_different_request_remediation_clears_active_fail(
     failed_ref = f"{fail_path}@{fail_commit}"
     request_path, request_commit = _commit_request(
         root,
-        fail_commit,
+        head,
         remediation_head,
         timestamp="2026-07-25T08-00-00Z",
         remediates_failed_report=failed_ref,
     )
     _commit_report(
         root,
-        fail_commit,
+        head,
         remediation_head,
         request_path,
         request_commit,
@@ -1266,7 +1331,7 @@ def test_sibling_branch_remediation_report_cannot_clear_active_fail(
     _git(root, "switch", "-q", "-c", "request-branch")
     request_path, request_commit = _commit_request(
         root,
-        fail_commit,
+        head,
         common,
         timestamp="2026-07-25T08-00-00Z",
         remediates_failed_report=failed_ref,
@@ -1275,7 +1340,7 @@ def test_sibling_branch_remediation_report_cannot_clear_active_fail(
     _git(root, "switch", "-q", "-c", "report-branch", common)
     _report_path, report_commit = _commit_report(
         root,
-        fail_commit,
+        head,
         common,
         request_path,
         request_commit,
@@ -1343,14 +1408,14 @@ def test_different_request_remediation_cannot_reuse_inactive_fail(
     remediation_head = _git(root, "rev-parse", "HEAD")
     request_path, request_commit = _commit_request(
         root,
-        fail_commit,
+        head,
         remediation_head,
         timestamp="2026-07-25T08-00-00Z",
         remediates_failed_report=failed_ref,
     )
     _commit_report(
         root,
-        fail_commit,
+        head,
         remediation_head,
         request_path,
         request_commit,
@@ -1387,14 +1452,14 @@ def test_different_request_fail_report_cannot_clear_active_fail(
     failed_ref = f"{fail_path}@{fail_commit}"
     request_path, request_commit = _commit_request(
         root,
-        fail_commit,
+        head,
         remediation_head,
         timestamp="2026-07-25T08-00-00Z",
         remediates_failed_report=failed_ref,
     )
     second_fail_path, second_fail_commit = _commit_report(
         root,
-        fail_commit,
+        head,
         remediation_head,
         request_path,
         request_commit,
@@ -1457,9 +1522,9 @@ def test_review_projection_uses_bounded_git_processes(
     assert [(item.path, item.commit) for item in state.pending] == [
         (current_path, current_commit)
     ]
-    # One bounded cutover tree projection and one ancestor-set query extend
-    # the constant projection budget without making it mailbox-size dependent.
-    assert calls <= 14
+    # Fixed cutover projections extend the constant process budget without
+    # making it mailbox-size dependent.
+    assert calls <= 16
 
 
 def test_production_snapshot_process_count_is_candidate_independent(
@@ -1501,7 +1566,9 @@ def test_production_snapshot_process_count_is_candidate_independent(
 
         with monkeypatch.context() as scoped:
             scoped.setattr(subprocess, "Popen", counted_popen)
-            snapshot = status.collect_orientation_snapshot(root, "coordinator")
+            snapshot, _projection = status._collect_review_state(
+                root, status.collect_git(root)
+            )
             assert snapshot["gate"]["fatal"] == 0, snapshot["blocker"]
         process_counts.append(len(calls))
 
@@ -1832,7 +1899,7 @@ def test_legacy_reports_do_not_add_per_artifact_git_processes(
             assert [item.report_path for item in state.failed] == [fail_path]
 
     assert process_counts[0] == process_counts[1] == process_counts[2]
-    assert process_counts[0] <= 14
+    assert process_counts[0] <= 16
 
 
 def _history_exception_entry(
@@ -1855,9 +1922,9 @@ def _history_exception_entry(
         "accepted_current_blob": accepted_current_blob,
         "accepted_current_sha256": accepted_current_sha256,
         "digest_authority": (
-            "scripts/baselines/lane_v_reports_pre_v3.json"
+            "pipeline/baselines/lane_v_reports_pre_v3.json"
             if is_report
-            else "scripts/baselines/immutable_review_history_exceptions.json"
+            else "pipeline/baselines/immutable_review_history_exceptions.json"
         ),
         "reason": "measured pre-enforcement fixture repair",
     }
@@ -1876,7 +1943,7 @@ def _commit_history_exception(
         _git(root, "rev-parse", f"HEAD:{path}"),
         hashlib.sha256(raw).hexdigest(),
     )
-    baselines = root / "scripts/baselines"
+    baselines = root / "pipeline/baselines"
     if path.endswith("-verification-report.md"):
         (baselines / "lane_v_reports_pre_v3.json").write_text(
             json.dumps(
@@ -1895,7 +1962,7 @@ def _commit_history_exception(
         ),
         encoding="utf-8",
     )
-    _git(root, "add", "scripts/baselines")
+    _git(root, "add", "pipeline/baselines")
     _git(root, "commit", "-q", "-m", "bind exact history exception")
     return entry
 
@@ -1906,7 +1973,7 @@ def test_frozen_history_manifest_refuses_committed_lifecycle_mutation(
 ) -> None:
     root, coord, base, head = _review_repo(tmp_path)
     _commit_request(root, base, head)
-    relative = "scripts/baselines/immutable_review_history_exceptions.json"
+    relative = "pipeline/baselines/immutable_review_history_exceptions.json"
     manifest = root / relative
     original = manifest.read_bytes()
     if mutation == "delete":
@@ -1946,7 +2013,7 @@ def test_replace_ref_and_ambient_git_env_cannot_hide_manifest_mutation(
 ) -> None:
     root, coord, base, head = _review_repo(tmp_path)
     _commit_request(root, base, head)
-    relative = "scripts/baselines/immutable_review_history_exceptions.json"
+    relative = "pipeline/baselines/immutable_review_history_exceptions.json"
     manifest = root / relative
     introduced = manifest.read_bytes()
     manifest.write_bytes(introduced + b"\n")
@@ -2032,7 +2099,7 @@ def _rewrite_exception_and_companion_for_current_report(
     raw = (root / report_path).read_bytes()
     entry["accepted_current_blob"] = _git(root, "hash-object", report_path)
     entry["accepted_current_sha256"] = hashlib.sha256(raw).hexdigest()
-    baselines = root / "scripts/baselines"
+    baselines = root / "pipeline/baselines"
     (baselines / "lane_v_reports_pre_v3.json").write_text(
         json.dumps(
             {
@@ -2081,9 +2148,9 @@ def test_frozen_exception_authority_refuses_event_and_companion_co_update(
     _git(root, "add", report_path)
     if rewrite_manifest:
         _rewrite_exception_and_companion_for_current_report(root, entry)
-        _git(root, "add", "scripts/baselines")
+        _git(root, "add", "pipeline/baselines")
     else:
-        lane = root / "scripts/baselines/lane_v_reports_pre_v3.json"
+        lane = root / "pipeline/baselines/lane_v_reports_pre_v3.json"
         companion = json.loads(lane.read_text(encoding="utf-8"))
         companion["reports"][0]["sha256"] = hashlib.sha256(
             report.read_bytes()
@@ -2120,7 +2187,7 @@ def test_frozen_six_refuse_active_fail_go_plus_seventh_exception(
     )
     _git(clone, "add", report_path)
     raw = report.read_bytes()
-    manifest_path = clone / "scripts/baselines/immutable_review_history_exceptions.json"
+    manifest_path = clone / "pipeline/baselines/immutable_review_history_exceptions.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     manifest["entries"].append(
         _history_exception_entry(
@@ -2132,13 +2199,13 @@ def test_frozen_six_refuse_active_fail_go_plus_seventh_exception(
         )
     )
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
-    lane_path = clone / "scripts/baselines/lane_v_reports_pre_v3.json"
+    lane_path = clone / "pipeline/baselines/lane_v_reports_pre_v3.json"
     lane = json.loads(lane_path.read_text(encoding="utf-8"))
     lane["reports"].append(
         {"path": report_path, "sha256": hashlib.sha256(raw).hexdigest()}
     )
     lane_path.write_text(json.dumps(lane), encoding="utf-8")
-    _git(clone, "add", "scripts/baselines")
+    _git(clone, "add", "pipeline/baselines")
     _git(clone, "commit", "-q", "-m", "attempt seventh exception")
 
     state = cc.inspect_verify_review_state(clone)
@@ -2173,7 +2240,7 @@ def test_history_exception_refuses_binding_corruption(
         entry["accepted_current_sha256"] = "0" * 64
     else:
         entry["introduction_blob"] = "0" * 40
-    manifest = root / "scripts/baselines/immutable_review_history_exceptions.json"
+    manifest = root / "pipeline/baselines/immutable_review_history_exceptions.json"
     manifest.write_text(
         json.dumps(
             {"schema_version": "immutable-review-history-exceptions/v1", "entries": [entry]}
@@ -2355,7 +2422,7 @@ def test_projection_wires_strict_archive_parser(
     assert "unexpected member type" in state.problem
 
 
-def test_pre_remediation_snapshot_surfaces_failed_review_and_history_exceptions(
+def test_pre_remediation_state_surfaces_failed_review_and_history_exceptions(
     repo_root: Path, tmp_path: Path,
 ) -> None:
     baseline = _clone_pre_remediation_review_baseline(
@@ -2374,7 +2441,6 @@ def test_pre_remediation_snapshot_surfaces_failed_review_and_history_exceptions(
 
     state = cc.inspect_verify_review_state(baseline)
     projection, projection_problem = cc._committed_mailbox_projection(baseline)
-    snapshot = status.collect_orientation_snapshot(baseline, "operator2")
 
     assert projection_problem is None
     assert projection is not None
@@ -2396,21 +2462,6 @@ def test_pre_remediation_snapshot_surfaces_failed_review_and_history_exceptions(
         for item in state.failed
     }
     assert len(state.grandfathered_history) == 6
-    assert snapshot["current_request"] is None
-    assert snapshot["failed_review"] == {
-        "request_path": request_path,
-        "request_commit": request_commit,
-        "report_path": report_path,
-        "report_commit": report_commit,
-        "assigned_operator": "operator2",
-    }
-    assert snapshot["gate"] == {
-        "status": "FAIL",
-        "fatal": 0,
-        "advisory": 7,
-        "failed_review": 1,
-    }
-    assert "remediate failed review" in snapshot["next_action"]
 
 
 def test_post_cutover_fail_and_newer_pending_coexist_with_live_e0fb_baseline(

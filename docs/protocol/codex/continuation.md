@@ -1,90 +1,66 @@
-# Codex continuation adapter
+# Codex desktop continuation adapter
 
-This maps Pipeline policy to Codex mechanics; canonical validation lives in `scripts/codex_protocol_model.py`.
-Role prompts and skills contain local deltas. Desktop guide: `docs/protocol/app-quickstart.md`.
-
-## Modes
-
-- Readiness bridge: read-only orientation; no role claim or durable mutation.
-- Live role: only when a concrete Director or Operator role is assigned.
-- Coordinator: only for explicit observation, reconciliation, or mediation.
-- Subagent: bounded by its parent and never inherits live-role authority.
-
-Runtime identity comes from the harness; variables, labels, and prompts grant no authority.
+This file maps the shared contract to Codex desktop mechanics. Read
+`AGENTS.md`; canonical risk and authority shape lives in
+`pipeline/codex_protocol_model.py`.
 
 ## Orientation
 
-Use the native worktree index: `coordination/bin/pipeline-python scripts/status.py snapshot <seat>`.
+The project `.codex/config.toml` supplies the normal MCP member label `codex`;
+the label is not app or model attestation.
+Start from the current user task, Git status/diff, and task history. Call
+`team_status` once and read addressed messages with `team_wait`. Do not process
+legacy mailbox backlog as startup work.
 
-Read actionable event bodies before a decision. The mailbox is the configured
-coordination transport (`governance.toml` `[coordination]`); a signed-bus cutover
-is an explicit reviewed transport change. Omission or a malformed declaration
-fails closed, so transport ambiguity fails visibly. Only the assigned live role
-consumes its cursor; coordinator has no cursor.
+Queue success is not acknowledgement, acknowledgement is not understanding, and a linked
+reply is not automatically substantive. Use `team_send` for direct scoped
+collaboration and wait only when the answer is a real dependency. Messages
+grant no role, review, permission, or external-effect authority.
 
-Use `coordination/bin/send-event <sender> <recipient> <kind> <subject...>`
-(body on stdin) and `coordination/bin/consume-events <seat> [--to <timestamp>]`;
-never raw event or cursor edits.
+## Native work
 
-Refresh HEAD, relevant events, and scoped status before a write or gate. One
-fresh snapshot is the orientation path; there is no separate fast-resume
-classification or second doctrine dump.
+Use Codex's native workspace, task, worktree, review, and bounded subagent
+mechanics. A subagent is an extension of this app: it never inherits live-role
+authority and must never publish a formal verdict or live-role event as a
+separate member.
 
-At a long-horizon boundary — transfer, interruption, wrap, or compaction —
-publish one checkpoint `findings` event (draft: `scripts/draft_checkpoint.py`;
-its `Lessons:` line routes learning candidates, and `none-considered` is valid).
-Resume from one snapshot, the newest campaign checkpoint, and its actionable
-bodies; unread backlog is not an orientation debt. Episodic recall via
-`scripts/learning_index.py query` is advisory; committed state outranks it.
+Parallelize read-only and file-disjoint work; assign ownership and serialize
+shared-file writes. Keep ordinary implementation direct, use focused tests
+while iterating, inspect the exact diff, and run one final proportionate pass.
 
-## Executable contracts
+Explore, Validate, and Promote in `docs/protocol/work-modes.md` are optional
+product-phase descriptions; they grant no role or authority.
 
-- `scripts/codex_protocol_model.py`: identity, ownership, risk, and effect tokens.
-- `scripts/compact_pair_loop.py`: formal requests, reports, and exact ranges.
-- `scripts/mailbox_writer.py` validates and serializes event publication.
-- `scripts/claude_task_connector.py` owns the no-authority, lazy transient Claude bridge.
-- This adapter owns host task discovery, dispatch, and waiting behavior.
+Do not launch Claude, AGY, or another Codex provider from a terminal. Terminal
+commands are for repository implementation, Git, tests, and
+`bin/pipeline preflight`.
 
-Role semantics are owned by `.agents/skills/four-seat-protocol/SKILL.md`
-and its role skills. Subagents return bounded evidence and never publish a
-formal verdict or live-role event.
+## Review and effects
 
-Review depth follows `AGENTS.md` and the executable model. Once formal review is
-triggered, preserve its complete committed Compact Pair binding.
+There are no standing seats. At a formal boundary Codex may temporarily act as
+author or as the non-author reviewer for one exact range. The reviewer must use
+the actual diff; high-risk acceptance needs different-model-family review and
+abuse-class analysis. AGY input is fully considered but cannot be the sole
+formal verdict.
 
-Host task tools own discovery, dispatch, and waiting. One trigger identifies one task;
-monitoring failure authorizes neither redispatch, role substitution, nor an effect.
+Push, merge, release, paid spend, live-data mutation, and destructive
+operations each need exact current user/task authority. Native task controls,
+MCP messages, test results, and role labels do not grant it.
 
-Use native host controls to list tasks, paginate turns, wait on bounded
-snapshots, rename or pin work, archive or unarchive it, and fork completed
-history. Review panels are presentation; never automate hard deletion or create
-a persistent goal without an explicit request. All task metadata grants no role,
-review, or effect authority and cannot replace formal exact-range review.
+## Continuation and targets
 
-## Claude task connector
+Git, tests, and Codex task history are the normal continuation state. Leave one
+concise checkpoint only for real transfer, interruption, compaction, or wrap;
+legacy conversation, cursors, and peer receipts are compatibility evidence.
+Frozen review-history boundaries come only from
+`pipeline/baselines/review_history_boundary.json`; do not copy their SHAs
+into adapter prose.
+Use the fixed mailbox writer only for a risk-required formal review artifact,
+a real transfer/checkpoint `findings` event, or the governed
+learning-candidate/disposition lifecycle when it must persist beyond the app
+task, never routine chat.
 
-For transient Codex/Claude communication, default to `claude_task_connector`;
-its first send starts `pipeline-codex-bridge` under the user's standing
-one-instance `$1.00` authority without another prompt. A send is not a delivery
-ack. Reject private Desktop paths; follow `docs/protocol/claude/task-connector.md`.
-
-External effects remain separate from structural validation. Push, merge,
-locking, event consumption, paid spend, provider launch, and live-data mutation
-need exact authority for the executor, target, and scope.
-
-## Review-state history boundary
-
-Review-state projection is bound to
-`scripts/baselines/review_history_boundary.json` and its frozen exception
-manifest, consumed fail-closed by `scripts/check_coordination.py`. These one-way
-baselines change only through a new high-risk-reviewed schema. An active FAIL
-clears only through a valid GO/NITS report bound to and superseding it; active
-failures block repository-wide, and the cutover must be an ancestor of HEAD.
-
-## Evidence-ledger bridge
-
-For the registered `evidence-ledger` target, read
-`docs/protocol/codex/ledger-cli-adoption.md`, then the target repo's instructions.
-Start from Pipeline; do not infer product authority from the bridge.
-
-Optional ChatGPT Pro consultation is parent-only and advisory: follow .agents/skills/chatgpt-pro-consultation/SKILL.md; it grants no protocol or side-effect authority.
+Resolve target work with `bin/pipeline target`, then read that repository's
+instructions. The historical evidence-ledger bridge remains at
+`docs/protocol/codex/ledger-cli-adoption.md`; it does not grant product or
+effect authority.

@@ -1,0 +1,37 @@
+{
+  "name": "desktop-claim-probe-selection",
+  "comment": "Frozen desktop claim-probe selection pack: claim formation selects the claim skill, mechanism testing selects its control decoy, and the Claude stub still routes by the canonical trigger. Grown, never edited in place.",
+  "kind": "selection",
+  "cases": [
+    {
+      "id": "desktop-load-bearing-claim-attack",
+      "trigger": "before stating that desktop MCP transport is verified end to end, derive the load-bearing claim premises, cite the measuring commands, and ask a reduced-context same-family subagent to attack only the sentence",
+      "expect": "probe-a-claim",
+      "decoys": [
+        "prove-a-control",
+        "isolate-a-variable",
+        "writing-skills"
+      ]
+    },
+    {
+      "id": "negative-control-is-not-claim-formation",
+      "trigger": "prove that a pre-dispatch gate fails when its call site is removed and try an evasion path around the guard",
+      "expect": "prove-a-control",
+      "decoys": [
+        "probe-a-claim",
+        "isolate-a-variable",
+        "writing-skills"
+      ]
+    },
+    {
+      "id": "claude-stub-routes-desktop-claim-loop",
+      "trigger": "in Claude Desktop, before writing measured or complete, derive the claim premises and record every blank cell through the canonical skill stub",
+      "expect": "probe-a-claim",
+      "decoys": [
+        "writing-skills",
+        "prove-a-control",
+        "four-seat-protocol"
+      ]
+    }
+  ]
+}

@@ -1,37 +1,26 @@
 ---
 name: seat-operator
-description: Use for explicit operator/operator2 implementation or independent review and GO/NITS/FAIL.
+description: Use when explicitly assigned the temporary independent reviewer responsibility for an exact committed range and a GO, NITS, or FAIL decision.
 ---
 
-# Operator role delta
+# Temporary independent reviewer responsibility
 
-Load the four-seat skill first. This role exists only when the user or parent
-explicitly assigns `operator` or `operator2`.
+Load `four-seat-protocol` first. This responsibility exists for one committed
+range; `operator` is a legacy filename, not a standing team position. A member
+may implement other work, but never reviews a range it authored.
 
-Read one `python scripts/status.py snapshot <seat>` result, the relevant event
-bodies, and scoped Git state. An Operator may own and implement accepted work,
-but never reviews anything it authored.
+Bind the exact repository, request, base, head, paths, author/model identity,
+reviewer/model identity, risk class, and carried findings before inspecting the
+diff. Test the behavior and attack the stated abuse classes rather than
+reviewing only the request prose. A high-risk reviewer must use a currently
+admitted Codex or Claude model whose family differs from the author model;
+AGY findings remain advisory and cannot issue the accepting verdict.
 
-For an assigned formal review, bind the committed verify-request and exact base/head
-before testing. Confirm outcome, author identity, assigned reviewer, allowed
-paths, and immutable finding refs. Select evidence from the risk profile in
-`AGENTS.md`; high-risk control review additionally requires a different model
-and explicit abuse-class assessment. Disposition every carried finding and
-issue GO/NITS/FAIL only for the actual range.
+Return one evidence-backed GO/NITS/FAIL and disposition every carried finding.
+The report shape is `verification-report-format.md`. Use `team_send` for
+questions or interim evidence; a team message is not the verdict. Publish a
+formal report through `bin/pipeline mail send` only when the risk policy requires
+the durable artifact. Stay read-only for the reviewed range.
 
-Publish a formal report only through `coordination/bin/send-event`. Generic
-subagents may gather evidence but cannot issue the role verdict. Do not edit
-while acting as reviewer.
-
-Use the current worktree's native Git index. Commit, event publication, cursor
-consumption, push, merge, lock action, provider launch, spend, and live-data
-mutation remain separate authorities.
-
-Optional ChatGPT Pro consultation is parent-only and advisory: follow
-`.agents/skills/chatgpt-pro-consultation/SKILL.md`.
-## Rule maintenance
-Observed failure: operator review of authored work; wrap without routing
-lessons. Mode/risk: assigned operator work.
-Cost: bind the request and exact range; checkpoint when this seat owns
-the wrap. Owner: the assigned operator.
-Re-evaluate: if an operator issues GO/NITS/FAIL on a range they authored.
+Push, merge, release, spend, destructive operations, and live-data mutation
+remain separately authorized effects.

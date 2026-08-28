@@ -14,7 +14,6 @@ NORMATIVE_SURFACES = (
     "docs/protocol/codex/continuation.md",
     "docs/protocol/codex/ledger-cli-adoption.md",
     "docs/protocol/claude/ledger-cli-adoption.md",
-    "docs/protocol/threeway/HEADLESS-REVIEW.md",
 )
 
 HISTORICAL_SENTINELS = {

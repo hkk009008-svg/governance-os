@@ -301,7 +301,7 @@ def test_guard_routes_future_target_from_registry(tmp_path, capsys):
             "--root", str(root),
             "--kernel", str(root),
             "--binding-root", str(root),
-            "--seat", "director",
+            "--seat", "author",
             "--wave", "2",
         ]
     )
@@ -330,7 +330,7 @@ def test_guard_selects_named_target_over_default(tmp_path, capsys):
             "--kernel", str(root),
             "--binding-root", str(root),
             "--target", "beta-app",
-            "--seat", "director",
+            "--seat", "author",
             "--wave", "2",
         ]
     )
@@ -351,7 +351,7 @@ def test_guard_fails_closed_on_unknown_target(tmp_path, capsys):
             "--kernel", str(root),
             "--binding-root", str(root),
             "--target", "ghost",
-            "--seat", "director",
+            "--seat", "author",
         ]
     )
 
@@ -372,7 +372,7 @@ def test_guard_refuses_configured_forbidden_root(tmp_path, capsys):
             "--root", str(forbidden),
             "--kernel", str(root),
             "--binding-root", str(root),
-            "--seat", "director",
+            "--seat", "author",
         ]
     )
 
@@ -388,9 +388,9 @@ def test_protocol_doctor_base_commands_include_binding_check():
     import protocol_doctor
 
     commands = protocol_doctor.base_commands(python_executable="PY", wave=2)
-    assert ["PY", "scripts/target_binding.py", "--check"] in commands
-    assert ["PY", "scripts/check_coordination.py"] in commands
-    assert ["PY", "scripts/protocol_capacity_board.py", "--wave", "2"] in commands
+    assert ["PY", "pipeline/target_binding.py", "--check"] in commands
+    assert ["PY", "pipeline/check_coordination.py"] in commands
+    assert ["PY", "pipeline/route_lineage.py", "--check"] in commands
 
 
 # --- autonomous route conflict enforcement ----------------------------------
@@ -485,7 +485,7 @@ def test_build_guard_reports_selected_task_lineage_failure(tmp_path):
     )
 
     result = ledger_start_guard.build_guard(
-        seat="director",
+        seat="author",
         root=root,
         kernel=root,
         binding_root=root,
@@ -555,7 +555,7 @@ def test_find_latest_route_rejects_worktree_replacement_after_validation(tmp_pat
         ledger_start_guard.find_latest_ledger_route(root, target)
 
     result = ledger_start_guard.build_guard(
-        seat="director", root=root, kernel=root, binding_root=root
+        seat="author", root=root, kernel=root, binding_root=root
     )
     assert not result.ok
     assert any("working tree" in error for error in result.errors)
@@ -580,7 +580,7 @@ def test_guard_delete_readd_same_filename_never_uses_old_valid_blob(tmp_path):
         ledger_start_guard.find_latest_ledger_route(root, target)
 
     result = ledger_start_guard.build_guard(
-        seat="director", root=root, kernel=root, binding_root=root
+        seat="author", root=root, kernel=root, binding_root=root
     )
     assert not result.ok
     assert any("ineffective" in error for error in result.errors)

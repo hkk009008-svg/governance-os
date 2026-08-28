@@ -1,129 +1,62 @@
-"""Codex environment containment regressions."""
+"""Desktop membership, model identity, and governance authority stay separate."""
 
 from __future__ import annotations
 
-import pytest
+import json
+import tomllib
+from pathlib import Path
 
-import codex_protocol_model as codex
-
-
-FOREIGN_PREFIXES = ("CLAUDE", "EXTERNAL")
-ROLE_LABELS = ("director", "director2", "operator", "operator2", "coordinator")
-FOREIGN_IDENTITY_VALUES = {
-    "SEAT": "director",
-    "AGENT_MODE": "live-seat",
-    "AGENT_ROLE": "director",
-    "BEHAVIOR_SOURCE": "foreign-behavior-source",
-    "GIT_INDEX_FILE": "/foreign/.git/index",
-}
-FOREIGN_POLICY_VALUES = {
-    "CAPABILITY_MODE": "foreign-capability",
-    "MUTATION_SCOPE": "foreign-mutation",
-    "AUTHORITY_SCOPE": "foreign-authority",
-    "MAILBOX_POLICY": "foreign-mailbox",
-    "GIT_POLICY": "foreign-git",
-    "VERIFICATION_POLICY": "foreign-verification",
-    "CONTEXT_SOURCES": "foreign-context",
-    "OUTPUT_CONTRACT": "foreign-output",
-    "DECISION_BOUNDARY": "foreign-decision",
-    "NEXT_ACTION_POLICY": "foreign-next-action",
-}
+import codex_protocol_model as protocol_model
 
 
-def _codex_baseline() -> dict[str, str]:
-    return codex.infer_runtime_env({})
+ROOT = Path(__file__).resolve().parents[2]
 
 
-@pytest.mark.parametrize("prefix", FOREIGN_PREFIXES)
-@pytest.mark.parametrize("profile", ROLE_LABELS)
-def test_foreign_profile_labels_never_select_a_codex_live_seat(
-    prefix: str, profile: str
-) -> None:
-    values = codex.infer_runtime_env({f"{prefix}_SEAT": profile})
+def _adapters() -> dict[str, dict]:
+    codex = tomllib.loads((ROOT / ".codex/config.toml").read_text(encoding="utf-8"))[
+        "mcp_servers"
+    ]["pipeline-team"]
+    claude = json.loads((ROOT / ".mcp.json").read_text(encoding="utf-8"))[
+        "mcpServers"
+    ]["pipeline-team"]
+    agy = json.loads((ROOT / ".agents/plugins/pipeline-team/mcp_config.json").read_text(encoding="utf-8"))[
+        "mcpServers"
+    ]["pipeline-team"]
+    return {"codex": codex, "claude": claude, "agy": agy}
 
-    assert values == _codex_baseline()
-    assert values["CODEX_AGENT_MODE"] == "readiness-bridge"
-    assert values["CODEX_SEAT"] == "(unset)"
+
+def test_each_app_identity_is_fixed_by_argv_not_environment() -> None:
+    for member, adapter in _adapters().items():
+        assert adapter["args"] == ["team", "serve", "--member", member]
+        assert adapter.get("env") in (None, {})
+        assert all("${" not in argument for argument in adapter["args"])
 
 
-@pytest.mark.parametrize("prefix", FOREIGN_PREFIXES)
-@pytest.mark.parametrize("suffix", FOREIGN_IDENTITY_VALUES)
-def test_every_foreign_identity_input_is_inert_to_every_codex_output(
-    prefix: str, suffix: str
-) -> None:
-    values = codex.infer_runtime_env(
-        {f"{prefix}_{suffix}": FOREIGN_IDENTITY_VALUES[suffix]}
+def test_project_adapters_carry_no_role_or_effect_authority() -> None:
+    for adapter in _adapters().values():
+        serialized = json.dumps(adapter, sort_keys=True).casefold()
+        assert "seat" not in serialized
+        assert "role" not in serialized
+        assert "approval" not in serialized
+        assert "sandbox" not in serialized
+        assert "spend" not in serialized
+
+
+def test_agy_models_may_author_but_not_issue_the_accepting_review() -> None:
+    assert protocol_model.model_family("gemini-3.7-flash-high") == "gemini"
+    assert protocol_model.models_are_independent(
+        "gpt-5.6-luna", "gemini-3.7-flash-high"
     )
-    assert values == _codex_baseline()
-
-
-@pytest.mark.parametrize("prefix", FOREIGN_PREFIXES)
-@pytest.mark.parametrize("suffix", FOREIGN_POLICY_VALUES)
-def test_every_foreign_policy_input_is_inert_to_every_codex_output(
-    prefix: str, suffix: str
-) -> None:
-    values = codex.infer_runtime_env(
-        {f"{prefix}_{suffix}": FOREIGN_POLICY_VALUES[suffix]}
+    assert not protocol_model.models_are_current_review_pair(
+        "gpt-5.6-luna", "gemini-3.7-flash-high"
     )
-    assert values == _codex_baseline()
-
-
-def test_genuine_codex_identity_drives_only_derived_codex_contract() -> None:
-    policy = {
-        f"CODEX_{suffix}": f"codex-{value}"
-        for suffix, value in FOREIGN_POLICY_VALUES.items()
-    }
-    values = codex.infer_runtime_env(
-        {
-            "CODEX_SEAT": "operator2",
-            "CODEX_AGENT_MODE": "live-seat",
-            "CODEX_AGENT_ROLE": "operator2",
-            "GIT_INDEX_FILE": "/repo/.git/index-codex-operator2",
-            **policy,
-        }
+    assert protocol_model.models_are_current_review_pair(
+        "gemini-3.7-flash-high", "claude-opus-4-7"
     )
 
-    assert values["CODEX_AGENT_MODE"] == "live-seat"
-    assert values["CODEX_AGENT_ROLE"] == "operator2"
-    assert values["CODEX_SEAT"] == "operator2"
-    assert values["CODEX_BEHAVIOR_SOURCE"] == "operator2"
-    assert "GIT_INDEX_FILE" not in values
-    assert values == codex.infer_runtime_env({"CODEX_SEAT": "operator2"})
 
-
-@pytest.mark.parametrize(
-    ("environ", "expected"),
-    [
-        (
-            {"CODEX_SEAT": "operator2"},
-            {
-                "CODEX_AGENT_MODE": "live-seat",
-                "CODEX_AGENT_ROLE": "operator2",
-                "CODEX_SEAT": "operator2",
-                "CODEX_BEHAVIOR_SOURCE": "operator2",
-            },
-        ),
-        (
-            {"CODEX_AGENT_MODE": "subagent"},
-            {
-                "CODEX_AGENT_MODE": "subagent",
-                "CODEX_AGENT_ROLE": "subagent",
-                "CODEX_SEAT": "(unset)",
-            },
-        ),
-        (
-            {"CODEX_AGENT_ROLE": "lane-v-verifier"},
-            {
-                "CODEX_AGENT_MODE": "subagent",
-                "CODEX_AGENT_ROLE": "lane-v-verifier",
-                "CODEX_SEAT": "(unset)",
-            },
-        ),
-    ],
-)
-def test_each_genuine_codex_identity_input_is_preserved(
-    environ: dict[str, str], expected: dict[str, str]
-) -> None:
-    values = codex.infer_runtime_env(environ)
-    for name, value in expected.items():
-        assert values[name] == value
+def test_formal_review_pair_remains_claude_and_gpt_only() -> None:
+    assert protocol_model.CURRENT_REVIEW_FAMILIES == frozenset({"claude", "gpt"})
+    assert protocol_model.models_are_current_review_pair(
+        "gpt-5.6-luna", "opus[1m]"
+    )

@@ -11,18 +11,18 @@
 ## Git hygiene
 
 - Use the selected task worktree's native Git index. Do not inherit or create a
-  per-seat `GIT_INDEX_FILE`. Prefix every git invocation with
+  separate role `GIT_INDEX_FILE`. Prefix every git invocation with
   `env -u GIT_INDEX_FILE ` — a dispatched agent cannot un-inherit the variable
   by intent, and an inherited value follows `cd` into unrelated repositories,
   where it presents as index corruption rather than as a wrong index.
 - Never run state-changing git (add/commit/checkout/stash/restore/read-tree)
   without explicit instruction. Read-only git such as show, log, diff, grep,
   rev-parse, and ls-tree is allowed when relevant.
-- For Lane V trigger authority, rely on the committed compact-pair verify-request
-  (`scripts/compact_pair_loop.py`) — there is
+- For formal-review trigger authority, rely on the committed compact-pair verify-request
+  (`pipeline/compact_pair_loop.py`) — there is
   no scope descriptor and no shipping trailer to emit; never invent trigger authority.
 
-## Prompt template (for Lane B implementers)
+## Prompt template (for bounded implementers)
 
 The fresh instance has no memory of your session. Give it only the context
 needed to act cold:
@@ -112,7 +112,7 @@ trim the template, do NOT trim these:
   said "mirror the `_mutate_shot` pattern" but `_mutate_shot` didn't
   exist; the actual pattern used `mutate_project` with a pid-scoped
   route. Implementer correctly used `mutate_project` but missed the
-  pid-scoping. Operator-seat's post-commit verification caught the
+  pid-scoping. Independent post-commit verification caught the
   divergence as a CRITICAL finding. Fix required a follow-up commit
   + route migration in callers.
 - **Item 5 (scoping check)** — same root cause as item 4, codified as

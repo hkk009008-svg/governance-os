@@ -18,7 +18,7 @@ curator was struck, and the archive was filed here.
 1. History-preserving `git mv` of aged events from
    `coordination/mailbox/sent/` to
    `coordination/mailbox/archive/<YYYY>/`, mirroring
-   `scripts/archive_handoffs.py` (clean worktree, `git mv` only, restore
+   the retired handoff archiver (clean worktree, `git mv` only, restore
    earlier moves on later failure).
 2. **I6:** backup failure blocks. Before the first `git mv`, take a
    fail-closed copy of the sent tree (a git archive or a second
@@ -27,11 +27,11 @@ curator was struck, and the archive was filed here.
    already-moved paths and refuse. Recovery is explicit: the backup
    tree or the pre-move commit is the rollback, not a best-effort
    leftover.
-3. Projections keep reading the archive. `scripts/check_coordination.py`
-   committed-mailbox projection, `scripts/protocol_mailbox.py`
-   candidate/checkpoint loaders, `scripts/learning_metrics.py`,
-   `scripts/slope_metrics.py`, `scripts/learning_index.py`, and
-   `scripts/bus_unread.py` must treat
+3. Projections keep reading the archive. `pipeline/check_coordination.py`
+   committed-mailbox projection, `pipeline/protocol_mailbox.py`
+   candidate/checkpoint loaders, `pipeline/learning_metrics.py`,
+   `pipeline/learning_index.py`, and
+   `pipeline/bus_unread.py` must treat
    `coordination/mailbox/archive/<YYYY>/*.md` as the same evidence
    class as `sent/`. An archive that drops events from the projection
    is a history rewrite and is forbidden.
@@ -50,13 +50,13 @@ Do not activate on event count alone. 889 sent events (measured
 `git ls-tree -r HEAD --name-only coordination/mailbox/sent/` at the
 parent of this proposal) is large, and the
 `tests/unit/test_check_coordination.py` file is already the expensive
-path, but `scripts/learning_metrics.py` still returns in ~0.4 s on
+path, but `pipeline/learning_metrics.py` still returns in ~0.4 s on
 that corpus.
 
-Activate when a **named live collector** that operators actually run
-— `scripts/check_coordination.py` live snapshot, or the committed-
+Activate when a **named live collector** that members actually run
+— `pipeline/check_coordination.py` live snapshot, or the committed-
 mailbox projection it uses — is measured at a pinned commit to exceed
-a recorded budget that a seat cites as blocking orientation. Record
+a recorded budget that a member cites as blocking orientation. Record
 that measurement in the activating change (command, commit, seconds).
 Until then, keep the corpus in `sent/`.
 

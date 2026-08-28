@@ -1,7 +1,7 @@
 # Work modes
 
 Pipeline separates the phase of product work from its review risk. The closed
-profiles live in `scripts/codex_protocol_model.py` under `work_profile_for`;
+profiles live in `pipeline/codex_protocol_model.py` under `work_profile_for`;
 this document explains how to apply them.
 
 Work mode is separate from review risk:
@@ -9,8 +9,8 @@ Work mode is separate from review risk:
 - mode controls iteration, record granularity, and the candidate boundary;
 - risk controls review depth, reviewer independence, and external authority.
 
-Neither a mode name nor a profile grants a write, seat, provider launch,
-canonical mutation, publication, merge, push, spend, or other external effect.
+Neither a mode name nor a profile grants a write, canonical mutation,
+publication, merge, push, spend, or other external effect.
 
 ## Ordinary work carries no mode
 
@@ -47,11 +47,11 @@ Explore exists to learn quickly without risking canonical state.
   not a retroactive rewrite.
 - Keep canonical assets, accepted evidence, live data, and external effects
   outside the sandbox.
-- Do not instantiate seats merely because an experiment exists. Use a handoff
-  only for a real ownership transfer.
+- Do not infer ownership merely because an experiment exists. Record a durable
+  owner change only for a real ownership transfer.
 - At a campaign phase change, interruption, or before context compaction,
-  publish one checkpoint `findings` event (`scripts/draft_checkpoint.py`
-  drafts it); resume from one snapshot plus the newest campaign checkpoint.
+  publish one checkpoint `findings` event (`bin/pipeline checkpoint` drafts
+  it); resume from one snapshot plus the newest campaign checkpoint.
 
 An Explore result is provisional. It may guide the next attempt but cannot be
 used as an accepted scientific or production claim.
@@ -88,14 +88,15 @@ cleanup.
 
 - In `explore`, run the formation loop for a claim that would stop the
   campaign, choose a candidate, or change phase. Routine observations may cite
-  their producing command directly. An amnesiac provider probe is not the
+  their producing command directly. A native amnesiac subagent read is not the
   default.
 - In `validate`, apply the full claim loop to the candidate's load-bearing
   conclusion.
 - In `promote`, retain the full claim evidence and the independent review.
 
-`coordination/bin/probe-claim` is a real provider launch. Provider launch
-remains separately authorized in every mode.
+`bin/pipeline probe` (the `coordination/bin/probe-claim` front door) only prints
+the claim's premises and a prompt for a native reduced-context desktop
+subagent. It starts no model, sends no team message, and grants no authority.
 
 ## Rule maintenance
 

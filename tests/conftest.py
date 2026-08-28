@@ -1,9 +1,9 @@
 """Shared fixtures for the governance-OS unit suite.
 
-Importability (``import threeway``, flat ``import <scripts-module>``) comes
-from ``[tool.pytest.ini_options] pythonpath = [".", "scripts"]`` in
-pyproject.toml, so test modules import directly without sys.path shims.
-Flat form is the one convention for scripts/ modules — see
+Importability (flat ``import <pipeline-module>``) comes from
+``[tool.pytest.ini_options] pythonpath = [".", "pipeline"]`` in pyproject.toml,
+so test modules import directly without sys.path shims.
+Flat form is the one convention for pipeline/ modules — see
 tests/unit/test_import_identity.py.
 """
 from __future__ import annotations
@@ -64,10 +64,3 @@ def pytest_sessionfinish(session, exitstatus) -> None:
 def repo_root() -> Path:
     """Absolute path to the repository root (parent of tests/)."""
     return Path(__file__).resolve().parent.parent
-
-
-@pytest.fixture
-def signer_keypair():
-    """A fresh Ed25519 keypair as (private_key, public_key_hex)."""
-    from threeway import keys
-    return keys.generate_keypair()

@@ -1,9 +1,9 @@
 ---
 name: seat-coordinator
-description: Use for explicit Claude coordinator observation, facilitation, or mediation.
+description: Use for explicit Claude coordinator observation, facilitation, or mediation — a retired position whose work now routes to author or reviewer.
 ---
 
-# Seat: Coordinator
+# Coordinator: a retired position
 
 Protocol SEMANTICS are canonical in `.agents/skills/seat-coordinator/SKILL.md`;
 this file is the intentional Claude-native adaptation, not drift (O2
@@ -11,40 +11,28 @@ ruling 2026-07-31, ADR-067 Stage 3a). Where the two disagree on protocol
 semantics, the `.agents` side wins and this file is corrected in the same
 change.
 
-Coordinator is unpinned, never consumes a cursor, and does not author
-behavior-changing production work.
+A review has two positions, `author` and `reviewer`. There is no third party
+left to mediate between them, so no task assigns coordinator work any more.
+`coordinator`/`coordinator2` stay readable in committed history and are refused
+as the sender of any new event; they were always cursorless, as current app
+members and temporary formal roles now are.
 
-Autonomous Seat Outcome Contract: scripts/codex_protocol_model.py
-Own the routed outcome and choose the method. Seats may reroute or exchange
-ownership through a durable accepted handoff without coordinator approval.
-Preflight is advisory. Preserve material findings and require non-author
-Operator review for behavior-changing work; only `high-risk-control` also
-requires a different model family. Bind ownership to an immutable parent/revision, preserve
-immutable finding refs, and keep external effects separately user-authorized
-for the exact effect/executor/target/scope. An Operator cannot verify anything
-it authored. Durable events use the fixed mailbox writer.
+When a prompt still names coordinator work, say so, then do the work as the
+position that owns it:
 
-Coordinator observes, reconciles, and mediates. It claims no work, is not a
-route-approval or convergence gate, does not issue another Operator's verdict,
-and does not author behavior-changing production work. Ownership becomes
-effective through the recorded owner/recipient lineage, not coordinator
-approval. Read the newest handoff, current Git, and relevant mailbox bodies.
-Diagnostics are evidence only; preflight is advisory.
+- Observation, reconciliation, and status reading need no role. Read
+  `bin/pipeline status` plus the relevant event bodies and report to whoever asked.
+  Diagnostics are evidence only; preflight is advisory.
+- A real transfer checkpoint is published by the owning Codex, Claude, or AGY
+  app member; its Owner must equal its envelope sender. Checking its existence
+  is ordinary observation.
+- Formal exact-range artifacts use `author` and `reviewer`; governed learning
+  records use app-member identities through `bin/pipeline mail send`. Mediation is
+  not a route-approval gate.
 
-At a multi-pair wrap, confirm each owning seat's checkpoint `findings` event
-exists and note a gap as a finding; the coordinator never authors one
-(a checkpoint's Owner must equal its envelope sender, a pair seat).
+Canonical Compact Pair Invariant: pipeline/codex_protocol_model.py
 
-Use the fixed mailbox writer only for a real mediation, transfer, evidence
-preservation, or blocker; do not create status churn. Preserve exact lineage
-and finding refs. Use `env -u GIT_INDEX_FILE` and explicit paths.
-
-Deduplicate dispatch by trigger identity, dispatch once, wait, and reconcile
-immutable artifacts. Monitoring trouble does not authorize redispatch, role
-substitution, or asking the user to relay a prompt. Capacity boards, doctors,
-wave gates, and smoke are optional evidence, never authority.
-
-Canonical Compact Pair Invariant: scripts/codex_protocol_model.py
-
-Push, merge, locks, consume, provider launch, ledger resume, and spend remain
-separately authorized. Structural tokens do not grant authority.
+Preserve exact lineage and finding refs. Use `env -u GIT_INDEX_FILE` for
+ordinary Git and explicit paths; `bin/pipeline` clears that variable itself.
+Push, merge, release, paid spend, live-data mutation, and destructive
+operations remain separately authorized. Structural tokens do not grant authority.

@@ -560,7 +560,7 @@ def test_external_token_completeness_does_not_create_authority():
     result = model.external_effect_token_is_complete(
         model.ExternalEffectToken(
             effect="push",
-            executor="director",
+            executor="codex",
             target="origin/main",
             scope=("commit:abc",),
         )
@@ -570,11 +570,11 @@ def test_external_token_completeness_does_not_create_authority():
     assert not result.execution_authorized
 
 
-def test_structurally_complete_seat_token_still_requires_external_user_authority():
+def test_structurally_complete_app_token_still_requires_external_user_authority():
     result = model.external_effect_token_is_complete(
         model.ExternalEffectToken(
             effect="ledger-resume",
-            executor="operator",
+            executor="claude",
             target="evidence-ledger/main",
             scope=("resume-checkpoint",),
         )
@@ -587,10 +587,11 @@ def test_structurally_complete_seat_token_still_requires_external_user_authority
 @pytest.mark.parametrize(
     "token",
     [
-        model.ExternalEffectToken("", "director", "origin/main", ("one",)),
+        model.ExternalEffectToken("", "codex", "origin/main", ("one",)),
         model.ExternalEffectToken("push", "unknown", "origin/main", ("one",)),
-        model.ExternalEffectToken("push", "director", "*", ("one",)),
-        model.ExternalEffectToken("push", "director", "origin/main", ()),
+        model.ExternalEffectToken("push", "director", "origin/main", ("one",)),
+        model.ExternalEffectToken("push", "codex", "*", ("one",)),
+        model.ExternalEffectToken("push", "codex", "origin/main", ()),
     ],
 )
 def test_external_token_rejects_incomplete_or_broadened_shape(token: model.ExternalEffectToken):

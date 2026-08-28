@@ -1,10 +1,17 @@
 # Advisory candidates — thin-evidence rules flagged for later principal review
 
-**Status: audit-only list. NO rule status is changed by this file or by the
-CLAUDE.md/AGENTS.md operative-split migration that created it.** This is a parking
-list for a *separate, later* advisory-review phase in which the user-principal
-decides whether any of these rules should move active → advisory (or be revised),
-*with intent*. Until then every rule below remains fully active.
+> **Historical audit evidence.** This dated parking list records the doctrine
+> that was evaluated at the time; it is not current authority. Use `AGENTS.md`,
+> executable policy, and the current protocol map for present behavior. In
+> particular, the standing four-seat/coordinator system described below is
+> retired; do not reactivate it from this record.
+
+**Status at the time of the record: audit-only list. NO rule status was changed
+by this file or by the CLAUDE.md/AGENTS.md operative-split migration that created
+it.** This was a parking list for a *separate, later* advisory-review phase in
+which the user-principal would decide whether any of these rules should move
+active → advisory (or be revised), *with intent*. At that time every rule below
+remained fully active.
 
 ## What "thin evidence" means here
 
@@ -46,9 +53,16 @@ git history begins 2026-06-30 @ `18cf325`; events dated before that (e.g. the
 2026-06-09 v5.6 retro cited below) are inherited documentation carried in the
 transfer bundle, not activity in this clone.
 
+**Citations in the table below no longer resolve at HEAD, and are kept as the
+record of what was read on 2026-07-07.** `docs/protocol/claude/core.md`,
+`failure-modes.md`, `orchestration.md`, and `four-seat-extension.md` were
+deleted in `23669fd7`, and `docs/protocol/claude/director-operator.md` in
+`0ed3622d` as a duplicate of the agent-neutral copy. Read them with
+`git show <commit>:<path>`; do not treat the line numbers as live anchors.
+
 | Rule | Trigger evidence at review | Verdict |
 |---|---|---|
-| Rule #17 | Trigger FIRED and already discharged: v5.6 dogfood retro 2026-06-09, "C4 DISCHARGED" at docs/protocol/claude/director-operator.md:1160; ~17–18 distinct `wf_*` run IDs cited at director-operator.md:1166-1170; retro verdict "net-positive and retained as-is" (director-operator.md:1192-1193). Further post-retro runs recorded at docs/PROTOCOL-RULES-LOG.md:589,729,736-737,743 and scripts/check_coordination.py:74,222. N today ≥ 18 (was N=0). | Keep fully active; **DELISTED** from this parking list (graduated — no longer thin-evidence, N≥18) |
+| Rule #17 | Trigger FIRED and already discharged: v5.6 dogfood retro 2026-06-09, "C4 DISCHARGED" at docs/protocol/claude/director-operator.md:1160; ~17–18 distinct `wf_*` run IDs cited at director-operator.md:1166-1170; retro verdict "net-positive and retained as-is" (director-operator.md:1192-1193). Further post-retro runs recorded at docs/PROTOCOL-RULES-LOG.md:589,729,736-737,743 and pipeline/check_coordination.py:74,222. N today ≥ 18 (was N=0). | Keep fully active; **DELISTED** from this parking list (graduated — no longer thin-evidence, N≥18) |
 | Rule #18 | Trigger NOT fired: N=0 unchanged; no dated dispatch record repo-wide (every grep hit is the rule's own definition/index: director-operator.md:1215-1323, agents/director-operator.md:925-1013, advisory-candidates.md:29, program-manual-guide.md:106, migration-map-claudemd-split.md:40,109,185). Graduation metrics require N≥3 dispatches (director-operator.md:1289-1295); none logged. | Keep fully active; stays listed, trigger unchanged |
 | Rule #19 | Trigger PARTIAL: no clean recurrence of the RC1–RC5 failure mode post-codification; related sibling incident "Candidate #9" (2026-06-09) at docs/PROTOCOL-RULES-LOG.md:560-594 is explicitly NOT counted toward Rule #19's N=2 per that log's own criterion (lines 576-580). N=1 unchanged. | Keep fully active; stays listed, trigger unchanged |
 | Rule #20 | Trigger NOT fired: no post-codification recurrence of RC3/RC4-type shared-state failures; the M2 hook fix was validated on controlled data only (director-operator.md:1429-1433), never in the field. N=1 unchanged. | Keep fully active; stays listed, trigger unchanged |

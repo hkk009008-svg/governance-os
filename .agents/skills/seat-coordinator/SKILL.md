@@ -1,43 +1,44 @@
 ---
 name: seat-coordinator
-description: Use for explicit coordinator observation, facilitation, reconciliation, or mediation.
+description: Use for explicit coordinator observation, facilitation, reconciliation, or mediation — a retired position whose work now routes to author or reviewer.
 ---
 
-# Coordinator role delta
+# Coordinator: a retired position
 
-Load the four-seat skill first. This role exists only when the user or parent
-explicitly assigns coordinator work.
+Load the four-seat skill first. A review has two positions, `author` and
+`reviewer`. There is no third party left to mediate between them, so no task
+assigns coordinator work any more.
 
-Read one `python scripts/status.py snapshot coordinator` result, the relevant
-event bodies, and scoped Git state. Coordinator is cursorless: never run
-`consume-events coordinator` or invent coordinator receipt.
+What is mechanically true today:
 
-Coordinator observes, reconciles, and mediates. It is not a route-approval gate,
-does not issue another Operator's verdict, and does not author
-behavior-changing production work. Ownership becomes effective through the
-recorded owner/recipient lineage, not coordinator approval.
+- `coordinator` and `coordinator2` remain lawful identities for READING
+  committed history. `pipeline/protocol_mailbox.py` keeps them in the receiving
+  roster so existing events still parse.
+- They cannot publish. `pipeline/mailbox_writer.py` admits `author`/`reviewer`
+  for formal artifacts and Codex/Claude/AGY app identities for checkpoints and
+  learning records, so a coordinator envelope is refused before publication.
+- They were always cursorless, and now both live roles are too. Never consume a
+  coordinator cursor and never invent a coordinator receipt.
 
-Use host task tools for an exact committed next-role trigger when available.
-Deduplicate by trigger identity, dispatch once, wait, and reconcile immutable
-artifacts. Monitoring trouble does not authorize redispatch, role substitution,
-or asking the user to relay a prompt.
+When a prompt still names coordinator work, say so, then do the work as the
+position that owns it:
 
-At a multi-pair wrap, confirm each owning seat's checkpoint `findings` event
-exists and note a gap as a finding; the coordinator never authors one
-(a checkpoint's Owner must equal its envelope sender, a pair seat).
+- Observation, reconciliation, and status reading need no role at all. Read
+  `bin/pipeline status` plus the relevant event bodies and report to whoever asked.
+- A real transfer checkpoint is published by the owning desktop app member;
+  its Owner must equal its envelope sender. Checking whether it exists is
+  ordinary observation, not a reviewer responsibility.
+- Formal exact-range artifacts use `author` and `reviewer`; governed learning
+  records use app-member identities. Mediation is not a route-approval gate.
 
-Publish only a real mediation, evidence transfer, or blocker through
-`coordination/bin/send-event`; do not create status churn. Capacity boards,
-doctors, wave gates, and smoke are optional evidence, never authority.
+Push, merge, release, paid spend, live-data mutation, and destructive
+operations remain separate authorities.
 
-Commit, event publication, cursor consumption, push, merge, lock action,
-provider launch, spend, and live-data mutation remain separate authorities.
-
-Optional ChatGPT Pro consultation is parent-only and advisory: follow
-`.agents/skills/chatgpt-pro-consultation/SKILL.md`.
 ## Rule maintenance
-Observed failure: coordinator authoring a checkpoint (Owner must equal
-the envelope sender, a pair seat).
-Mode/risk: assigned coordinator work. Cost: confirm coverage; never
-author the checkpoint. Owner: the assigned coordinator.
-Re-evaluate: if a coordinator-authored checkpoint publishes.
+Observed failure: a coordinator authoring a checkpoint (Owner must equal the
+envelope sender), and the position surviving in prose after the writer stopped
+accepting it as a sender.
+Mode/risk: any prompt that still names coordinator. Cost: one sentence naming
+the retirement before doing the work as author or reviewer.
+Owner: the app member that received the prompt.
+Re-evaluate: if a coordinator-sent event is ever accepted for publication.

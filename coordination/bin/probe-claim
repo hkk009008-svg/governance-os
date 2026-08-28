@@ -1,18 +1,21 @@
 #!/bin/bash
-# probe-claim — one claim in, its premises and an amnesiac's attack out.
+# probe-claim — one claim in, its premises and an amnesiac prompt out.
 #
 # The premises come from the claim's shape (claim_check.py grammar), so the
-# author does not have to remember them. The probe goes to a cross-family
-# reader whose prompt carries only the claim and whose launch is
-# reduced-context — empty cwd, minimal env, lane config skipped; HOME and the
-# binary path remain pointers, and claim_check.py says so. The point survives
-# the caveat: every one of the nine 2026-07-26/27 failures was visible to a
-# cold reader holding nothing but the sentence. Advisory on both counts; this
-# gates nothing, substitutes for no review, and each run is a provider launch
-# whose spend needs its own authority.
+# author does not have to remember them. The second section is text for a
+# native same-family desktop subagent given only the claim sentence. This
+# script starts no model, sends no team message, grants no authority, and
+# substitutes for no independent review.
 set -euo pipefail
 
-if [ $# -lt 1 ] || [ -z "${1:-}" ]; then
+if [ $# -eq 1 ] && { [ "$1" = "-h" ] || [ "$1" = "--help" ]; }; then
+  echo 'usage: bin/pipeline probe "<one load-bearing claim sentence>"'
+  echo "Print local premises and a prompt for a native reduced-context subagent."
+  echo "Starts no model and sends no team message."
+  exit 0
+fi
+
+if [ $# -ne 1 ] || [ -z "${1:-}" ] || [ "$1" = "--execute" ]; then
   echo "usage: probe-claim \"<one load-bearing claim sentence>\"" >&2
   exit 2
 fi
@@ -28,7 +31,7 @@ if [ -z "$PYTHON" ]; then
 fi
 
 echo "== premises (from claim shape, not memory) =="
-env -u GIT_INDEX_FILE "$PYTHON" "$ROOT/scripts/claim_check.py" premises "$1"
+env -u GIT_INDEX_FILE "$PYTHON" "$ROOT/pipeline/claim_check.py" premises "$1"
 echo
-echo "== amnesiac probe (cross-family, reduced-context) =="
-env -u GIT_INDEX_FILE "$PYTHON" "$ROOT/scripts/claim_check.py" probe --execute "$1"
+echo "== prompt for a native reduced-context subagent (not executed) =="
+env -u GIT_INDEX_FILE "$PYTHON" "$ROOT/pipeline/claim_check.py" probe "$1"

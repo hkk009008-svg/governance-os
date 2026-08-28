@@ -1,54 +1,65 @@
-# Risk classes — classification criteria
+# Risk classes
 
-The executable profiles (review requirements per class) live in
-`scripts/codex_protocol_model.py` `RISK_BASED_REVIEW_PROFILES`; this document
-owns the membership question the profiles deliberately do not answer: which
-changes belong to which class. The author declares the class on the
-verify-request and the assigned Operator's risk-class judgment is the
-governance floor (ADR-067 I5). When in doubt between two classes, take the
-higher one.
+Classify the changed behavior, not the amount of text or number of files. Use
+the lowest class that truthfully covers the work. The executable profiles live
+in `pipeline/codex_protocol_model.py`.
 
-## ordinary-local
+## `ordinary-local`
 
-Reversible, repository-local work whose failure is contained by the tree it
-edits: implementation details behind stable contracts, test-only changes,
-documentation that binds nothing, behavior-preserving refactors. Focused
-fresh verification; no formal request/report pair.
+Reversible repository-local work whose failure does not change a material
+runtime behavior or trust boundary. Examples include explanatory prose,
+low-risk refactors with preserved behavior, and local diagnostics.
 
-## material-behavior
+Required: focused verification and exact diff inspection. No formal role,
+event, or independent review.
 
-A change is material when it crosses a load-bearing boundary:
+## `material-behavior`
 
-- a public or cross-component contract (API, schema, event shape, CLI);
-- persistence semantics or stored-data migration;
-- an accepted scientific or business conclusion;
-- externally visible or hard-to-reverse behavior;
-- repository-wide execution architecture (CI topology, test harness);
-- an instruction surface (`AGENTS.md`, `CLAUDE.md`, skills, continuation
-  docs): prose is executable on models — the 2026-07
-  field trial measured doctrine text shaping a 6.5 h session whose reviewed
-  tools sat unused — so editing it changes behavior by the same standard as
-  code.
+A user-visible or operational behavior change, meaningful bug fix, data-model
+change, or integration change where an unnoticed defect would matter.
 
-Acceptance needs non-author review of the exact committed range.
+Required: focused verification plus a temporary author and a non-author Codex
+or Claude reviewer over the exact committed range. Same-family review is
+allowed unless the change also meets `high-risk-control`.
 
-## high-risk-control
+## `high-risk-control`
 
-Everything material, plus the change constructs or gates trust: authority or
-identity resolution, security enforcement, side-effect gating, money or
-resource enforcement, executable composition (hooks, launchers, fixed
-writers), trust-granting schema validation, or the review/admission machinery
-itself. Acceptance needs distinct non-author, different-model actual-diff
-review plus an explicit abuse-class assessment.
+A change to authority, authentication, security, privacy, executable
+composition, side-effect gates, formal review admission, identity binding,
+model-family trust, or another schema that decides whether work or an effect is
+accepted.
 
-## external-effect
+Required: everything in `material-behavior`, a reviewer from a different model
+family, and an explicit assessment of plausible abuse and evasion classes.
+Family difference is diversity evidence, not authority. Unknown families fail
+the diversity requirement.
 
-Push, merge, lock, cursor consumption, provider launch, paid spend, and
-live-data mutation. Not a review depth: live human authorization for the
-exact executor, target, effect, and scope — regardless of model capability
-or any green gate.
+AGY may investigate, challenge, test, and review evidence in every class.
+Material AGY findings must be answered, but AGY cannot be the independent
+formal reviewer or sole accepting verdict.
 
-The path-prefix list in `scripts/ci_admission_gate.py` (`AUTHORITY_SURFACES`)
-is the conservative executable approximation of the high-risk boundary at the
-integration gate; extending or narrowing it is itself an authority-surface
-change and reviews as one.
+## `external-effect`
+
+An action outside ordinary reversible local implementation. Push, merge,
+release, paid spend, live-data mutation, and destructive operations are always
+in this class even when the code was already reviewed.
+
+Required: exact current user/task authority naming executor, target, effect,
+and scope. Review, transport messages, app configuration, prior authorization,
+and structural tokens do not grant execution. If any field is missing, stop
+before the effect.
+
+## Escalation guide
+
+Ask, in order:
+
+1. Is an external effect requested? Handle its authority separately.
+2. Does the change decide trust, authority, security, or effect admission? Use
+   `high-risk-control`.
+3. Does it materially change behavior or integration? Use
+   `material-behavior`.
+4. Otherwise use `ordinary-local`.
+
+Do not promote risk because coordination feels complex, and do not demote risk
+because tests are green. If the boundary remains genuinely ambiguous, ask the
+user or take the safer adjacent class without inventing additional ceremony.

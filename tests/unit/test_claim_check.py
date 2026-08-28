@@ -20,6 +20,9 @@ import pytest
 import claim_check
 
 
+ROOT = Path(__file__).resolve().parents[2]
+
+
 # (claim as made, premise that would have named the miss)
 NINE_MEASURED_FAILURES = (
     # Round 1: held only in the author's checkout; failed in every worktree.
@@ -301,36 +304,42 @@ def test_ordinary_repository_prose_classifies_to_nothing(sentence: str) -> None:
     assert claim_check.classify(sentence) == [], (sentence, claim_check.classify(sentence))
 
 
-def test_probe_subprocess_starts_pointerless(monkeypatch, tmp_path: Path) -> None:
-    """The claimed property, pinned at the subprocess boundary it lives at.
+def test_probe_command_only_prints_a_native_subagent_prompt(
+    monkeypatch, capsys
+) -> None:
+    """The repository command must never hide a headless provider launch."""
 
-    The first shipped probe claimed a context-free reader while launching it in
-    the author's cwd with the author's environment — the prompt was clean and
-    the process sat inside the repository. Amnesia is a property of the launch,
-    so the launch is what gets asserted: an empty working directory that is not
-    ours, and an environment with no PWD, no GIT_*, nothing but PATH/HOME/TERM.
-    """
-    seen: dict = {}
+    def unexpected_launch(*_args, **_kwargs):
+        raise AssertionError("probe attempted to launch a subprocess")
 
-    def recorder(argv, **kwargs):
-        seen.update(kwargs)
-        seen["argv"] = argv
-        seen["cwd_contents"] = list(Path(kwargs["cwd"]).iterdir())
-        return subprocess.CompletedProcess(argv, 0, stdout="ok\n", stderr="")
+    monkeypatch.setattr(claim_check.subprocess, "run", unexpected_launch)
+    claim = "the gate is enforced on every launch"
 
-    monkeypatch.setattr(claim_check.subprocess, "run", recorder)
-    monkeypatch.setattr(claim_check.shutil, "which", lambda _name: "/probe/bin/codex")
+    assert claim_check.main(["probe", claim]) == 0
 
-    code = claim_check._run_probe("the gate is enforced on every launch", 5)
+    output = capsys.readouterr().out
+    assert claim in output
+    assert "amnesiac" in output
 
-    assert code == 0
-    cwd = Path(seen["cwd"])
-    assert cwd != Path.cwd()
-    assert seen["cwd_contents"] == []
-    environment = seen["env"]
-    assert set(environment) <= {"PATH", "HOME", "TERM"}
-    assert "PWD" not in environment
-    assert not any(key.startswith("GIT_") for key in environment)
+
+def test_probe_command_rejects_the_retired_execute_flag() -> None:
+    with pytest.raises(SystemExit) as exc:
+        claim_check.main(["probe", "the gate is enforced", "--execute"])
+
+    assert exc.value.code == 2
+
+
+def test_probe_wrapper_rejects_the_retired_execute_flag() -> None:
+    completed = subprocess.run(
+        [str(ROOT / "bin/pipeline"), "probe", "--execute"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode == 2
+    assert "usage: probe-claim" in completed.stderr
 
 
 def test_record_refuses_the_laundering_shapes(tmp_path: Path) -> None:
@@ -488,25 +497,15 @@ def test_every_trigger_alternative_carries_an_exclusive_witness() -> None:
             )
 
 
-def test_probe_argv_skips_the_lanes_user_config(monkeypatch, tmp_path: Path) -> None:
-    """The lane's own config carried repository paths; the probe must not load it.
+def test_probe_help_exposes_only_the_prompt_builder(capsys) -> None:
+    with pytest.raises(SystemExit) as exc:
+        claim_check.main(["probe", "--help"])
 
-    Round two showed HOME and the resolved binary remain pointers, and the
-    inherited user config pointed straight at this repository's projects and
-    hooks. The flag that skips it is part of the launch contract, so it is
-    pinned beside the cwd/env boundary.
-    """
-    seen: dict = {}
-
-    def recorder(argv, **kwargs):
-        seen["argv"] = argv
-        return subprocess.CompletedProcess(argv, 0, stdout="ok\n", stderr="")
-
-    monkeypatch.setattr(claim_check.subprocess, "run", recorder)
-    monkeypatch.setattr(claim_check.shutil, "which", lambda _name: "/probe/bin/codex")
-
-    assert claim_check._run_probe("the gate is enforced on every launch", 5) == 0
-    assert "--ignore-user-config" in seen["argv"]
+    assert exc.value.code == 0
+    output = capsys.readouterr().out.casefold()
+    assert "native reduced-context subagent" in output
+    assert "execute" not in output
+    assert not hasattr(claim_check, "_run_probe")
 
 
 def test_sweep_ignores_hash_inside_python_strings_and_reads_toml_prose(
@@ -543,7 +542,7 @@ def test_sweep_ignores_hash_inside_python_strings_and_reads_toml_prose(
 # the source table so coverage is derived — which made deleting a
 # (fragment, witness) pair silent again, since the witness vanishes with the
 # alternative it was pinning. This copy is the anchor the source cannot take
-# with it: an alternative deleted or added in scripts/claim_check.py without a
+# with it: an alternative deleted or added in pipeline/claim_check.py without a
 # matching, deliberate edit here is a red test, not a quiet narrowing. That is
 # the same two-file-change rule the nine-failure fixture already applies to
 # premises.

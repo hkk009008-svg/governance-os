@@ -8,8 +8,7 @@ tool that launches it.
 
 ## Canonical verdict vocabulary
 
-One enum, three values, used verbatim in the RESULT SCHEMA and as the machine
-token everywhere: `pass | issues | unable_to_verify`.
+One enum, three values: `pass | issues | unable_to_verify`.
 
 - `pass`: the reviewed work satisfies the requested checks and no issues were
   found.
@@ -46,57 +45,23 @@ severity inside the verdict.
 ## Git hygiene
 
 - Use the selected task worktree's native Git index; do not create or inherit a
-  per-seat `GIT_INDEX_FILE`.
+  separate role `GIT_INDEX_FILE`.
 - Never run state-changing git unless the parent prompt explicitly authorizes
   it. Read-only git commands such as `show`, `log`, `diff`, `grep`, `rev-parse`,
   `ls-tree`, and `cat-file -e` are allowed when relevant.
 - If tests or tooling invoke git internally, keep the outer command exactly as
   specified by the parent prompt.
-- For Lane V, a named commit or prose-only event is not trigger authority.
+- For formal review, a named commit or prose-only event is not trigger authority.
   Validate only parent-supplied structural authority; never invent trigger
   authority or reconstruct missing fields.
 
-## RESULT SCHEMA
+## Output contract
 
-Emit one fenced JSON block as the last machine-readable result for the review.
-The prose report may come first; this block serializes the executed evidence.
-
-```json
-{
-  "schema_version": "reviewer-result/1",
-  "role": "spec | code_quality",
-  "verdict": "pass | issues | unable_to_verify",
-  "reviewed_commit": "commit under review",
-  "reviewed_head": "git rev-parse HEAD value inspected",
-  "working_tree_clean": true,
-  "commands": [
-    {"command": "exact command run", "exit_code": 0, "summary": "literal command summary"}
-  ],
-  "issues": [
-    {"severity": "critical | important | minor", "file": "path", "line": 0,
-     "requirement": "enumerated id | unlisted", "finding": "what is wrong"}
-  ],
-  "commit_trailer": {"present": true,
-                     "expected": "required trailer line when one is specified",
-                     "observed": "verbatim trailer line or null"},
-  "unverifiable_reason": null,
-  "blocked": null
-}
-```
-
-Schema invariants:
-
-- `pass` requires an empty `issues` array.
-- `issues` requires at least one issue entry.
-- `unable_to_verify` means the code is unjudged; do not record speculative
-  defects under it.
-- `unable_to_verify` requires `issues: []`, a non-null `blocked`, and
-  `unverifiable_reason` equal to one of U1-U5.
-- `reviewed_head != reviewed_commit` is valid only with `unable_to_verify`
-  using U4.
-- `working_tree_clean=false` is valid only with `unable_to_verify` using U3.
-- Every command used as evidence appears in `commands` with its real exit code
-  and a literal one-line summary.
+Report findings first in severity order from the actual diff, then the reviewed
+range, exact commands and results, verdict, uncertainty, and next action. `pass` has no findings;
+`issues` names at least one evidenced defect; `unable_to_verify` names the exact
+failed precondition and leaves the code unjudged. Formal GO/NITS/FAIL publication
+uses the repository's verification-report format, not a second result schema.
 
 ## Evidence preamble
 
@@ -138,7 +103,7 @@ Task-specific evidence rules:
 
 ```text
 You are reviewing whether Task <N>'s implementation matches its requirements.
-Use the Independence, Git hygiene, RESULT SCHEMA, and Evidence preamble sections
+Use the Independence, Git hygiene, Output contract, and Evidence preamble sections
 from docs/templates/agents/reviewer.md.
 
 ## What Was Requested
@@ -160,15 +125,15 @@ from docs/templates/agents/reviewer.md.
 
 ## Report
 
-Return a concise prose verdict with file:line references for issues, then emit
-the RESULT SCHEMA JSON block with "role": "spec".
+Return a concise findings-first verdict with file:line references, the reviewed
+range, commands and results, uncertainty, and next action.
 ```
 
 ## Code quality reviewer prompt template
 
 ```text
 Code quality review for Task <N> at commit <SHA>.
-Use the Independence, Git hygiene, RESULT SCHEMA, and Evidence preamble sections
+Use the Independence, Git hygiene, Output contract, and Evidence preamble sections
 from docs/templates/agents/reviewer.md.
 
 ## Context
@@ -186,6 +151,6 @@ from docs/templates/agents/reviewer.md.
 
 ## Report
 
-Return strengths, issues grouped by severity, and an assessment. Then emit the
-RESULT SCHEMA JSON block with "role": "code_quality".
+Return strengths, issues grouped by severity, the reviewed range, commands and
+results, an assessment, uncertainty, and next action.
 ```

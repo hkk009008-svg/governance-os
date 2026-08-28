@@ -1,7 +1,7 @@
 # Skill-use outcome rows — advisory schema
 
-> Appended by seats at wrap to `logs/learning/outcomes.jsonl`.
-> Reported by `scripts/learning_metrics.py`. Advisory under contract I1/I2:
+> Appended by desktop members at wrap to `logs/learning/outcomes.jsonl`.
+> Reported by `pipeline/learning_metrics.py`. Advisory under contract I1/I2:
 > these counts bind no lifecycle decision and grant no authority. The
 > reporter writes nothing. Wiring any total here into accept / decline /
 > expire / edit / prune is a contract change and reviews as one (I7).
@@ -24,14 +24,14 @@ One JSON object per line. Required keys:
 | `task_ref` | string | Immutable `<sent-path>@<40-hex>`, or `none` |
 | `outcome` | string | `helped` \| `hindered` \| `neutral` |
 | `evidence_ref` | string | `<path>@<40-hex>`, `sha256:<64-hex>`, or `none` |
-| `seat` | string | Envelope seat that loaded the skill, or `none` |
+| `seat` | string | Compatibility field: desktop member that loaded the skill (`codex`, `claude`, or `agy`); older rows may contain a formal or legacy identity; or `none` |
 
 Optional: `note` (one line, no authority claim).
 
 Example (not a live measurement):
 
 ```json
-{"ts": "2026-08-12T22:00:00Z", "event": "skill-use", "skill": "create-regression-pin", "task_ref": "none", "outcome": "helped", "evidence_ref": "none", "seat": "operator", "note": "pin authored; --runxfail went red"}
+{"ts": "2026-08-12T22:00:00Z", "event": "skill-use", "skill": "create-regression-pin", "task_ref": "none", "outcome": "helped", "evidence_ref": "none", "seat": "codex", "note": "pin authored; --runxfail went red"}
 ```
 
 Non-`skill-use` events in the same file (the Stage 5 baseline row) are
@@ -39,22 +39,22 @@ other outcome types; the reporter ignores them for these counters.
 
 ## Who writes, who reads
 
-- **Seats** append at wrap when a named skill was loaded, or skip with a
-  one-line reason in the checkpoint `Lessons:` / handoff. There is no
+- **The current desktop member** appends at wrap when a named skill was loaded, or skips
+  with a one-line reason in the checkpoint `Lessons:` line. There is no
   quota and no penalty for `none`.
-- **`scripts/learning_metrics.py`** reports `skill_use_rows` split by
+- **`pipeline/learning_metrics.py`** reports `skill_use_rows` split by
   outcome, plus per-skill totals. Malformed `skill-use` lines are counted
   as `skill_use_malformed` and never coerced into helped/hindered/neutral.
-- **`scripts/mailbox_writer.py`**, **`scripts/compact_pair_loop.py`**,
-  **`scripts/learning_extract.py`**, **`scripts/learning_index.py`**, and
-  **`scripts/protocol_mailbox.py`** must not read this file or these
+- **`pipeline/mailbox_writer.py`**, **`pipeline/compact_pair_loop.py`**,
+  **`pipeline/learning_extract.py`**, **`pipeline/learning_index.py`**, and
+  **`pipeline/protocol_mailbox.py`** must not read this file or these
   counters. That absence is the recorded rejection of
   usage-counts-as-lifecycle-evidence.
 
 ## Interpretation
 
-Helped/hindered/neutral is the seat's wrap judgment, not a measurement.
-A high helped count can mean the skill is useful or that seats only log
+Helped/hindered/neutral is the member's wrap judgment, not a measurement.
+A high helped count can mean the skill is useful or that members only log
 successes. Treat the slope as a pointer: hindered rows with an
 `evidence_ref` are the input to a `procedure` candidate, not a vote to
 edit the skill in place.

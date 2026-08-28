@@ -2,6 +2,8 @@
 PATH=/usr/bin:/bin
 export PATH
 # send-event — compose one mailbox event and hand every kind to the fixed writer.
+# The trusted finalizer independently validates the envelope, identity lane,
+# and typed payload before staging.
 set -euo pipefail
 
 TMP=""
@@ -50,17 +52,19 @@ KIND=$3
 shift 3
 SUBJECT="$*"
 
+# App members publish ordinary durable records; temporary roles publish formal
+# review artifacts. Legacy seat names still parse but cannot write.
 case "$FROM" in
-  director|director2|operator|operator2|coordinator|coordinator2) ;;
+  author|reviewer|codex|claude|agy) ;;
   *)
-    echo "send-event: bad <from>: $FROM (director|director2|operator|operator2|coordinator|coordinator2)" >&2
+    echo "send-event: bad <from>: $FROM (author|reviewer|codex|claude|agy)" >&2
     exit 2
     ;;
 esac
 case "$TO" in
-  director|director2|operator|operator2|coordinator|coordinator2|all) ;;
+  author|reviewer|codex|claude|agy|all) ;;
   *)
-    echo "send-event: bad <to>: $TO (director|director2|operator|operator2|coordinator|coordinator2|all)" >&2
+    echo "send-event: bad <to>: $TO (author|reviewer|codex|claude|agy|all)" >&2
     exit 2
     ;;
 esac
@@ -72,8 +76,8 @@ PRIMARY_ROOT=$(/usr/bin/dirname "$COMMON")
 TRUSTED_PYTHON="$PRIMARY_ROOT/.venv/bin/python"
 SCRIPT_DIR=$(/usr/bin/dirname "${BASH_SOURCE[0]:-$0}")
 TOOL_ROOT=$(cd "$SCRIPT_DIR/../.." && /bin/pwd -P)
-MAILBOX_WRITER="$TOOL_ROOT/scripts/mailbox_writer.py"
-COMPACT_VALIDATOR="$TOOL_ROOT/scripts/compact_pair_loop.py"
+MAILBOX_WRITER="$TOOL_ROOT/pipeline/mailbox_writer.py"
+COMPACT_VALIDATOR="$TOOL_ROOT/pipeline/compact_pair_loop.py"
 if [ ! -x "$TRUSTED_PYTHON" ]; then
   echo "send-event: trusted Pipeline Python unavailable" >&2
   exit 4
@@ -96,37 +100,53 @@ if ! /usr/bin/grep -Fxq -- "$KIND" "$KIND_FILE"; then
   echo "send-event: unknown kind '$KIND' (see $KIND_FILE)" >&2
   exit 2
 fi
+
+case "$KIND" in
+  verify-request|verification-report)
+    # Formal review identity gate.
+    case "$FROM" in
+      author|reviewer) ;;
+      *)
+        echo "send-event: $KIND requires an author/reviewer sender" >&2
+        exit 2
+        ;;
+    esac
+    case "$TO" in
+      author|reviewer|all) ;;
+      *)
+        echo "send-event: $KIND requires an author/reviewer/all recipient" >&2
+        exit 2
+        ;;
+    esac
+    ;;
+  findings|learning-candidate|decision)
+    # Desktop durable-record identity gate.
+    case "$FROM" in
+      codex|claude|agy) ;;
+      *)
+        echo "send-event: $KIND requires a codex/claude/agy sender" >&2
+        exit 2
+        ;;
+    esac
+    case "$TO" in
+      codex|claude|agy|all) ;;
+      *)
+        echo "send-event: $KIND requires a codex/claude/agy/all recipient" >&2
+        exit 2
+        ;;
+    esac
+    ;;
+esac
+
 if [ "$KIND" = "verification-report" ]; then
   case "$FROM" in
-    operator|operator2) ;;
+    reviewer) ;;
     *)
-      echo "send-event: only operator seats may publish verification-report" >&2
+      echo "send-event: only the reviewer may publish verification-report" >&2
       exit 2
       ;;
   esac
 fi
-if [ "$KIND" = "verify-request" ]; then
-  case "$FROM" in
-    director|director2|operator|operator2) ;;
-    *)
-      echo "send-event: only pair seats may publish verify-request" >&2
-      exit 2
-      ;;
-  esac
-fi
-# Wrapper-side gate only: bypassable by hand-authoring until the Stage 2b
-# writer-side branch lands (ADR-067, contract I4), exactly as today's
-# non-compact-pair kinds are.
-if [ "$KIND" = "learning-candidate" ]; then
-  case "$FROM" in
-    director|director2|operator|operator2) ;;
-    *)
-      echo "send-event: only pair seats may publish learning-candidate" >&2
-      exit 2
-      ;;
-  esac
-fi
-
 # The mailbox filename is the protocol identity and is parsed by one canonical
 # grammar everywhere; it carries no uniqueness suffix. Two events with the same
 # (from, to, kind) in the same UTC second would collide on the same path and
@@ -149,10 +169,9 @@ fi
 TS_COLON="${TS_DASH:0:11}$(printf '%s' "${TS_DASH:11:8}" | /usr/bin/tr '-' ':')Z"
 FROM_TITLE="$(printf '%s' "${FROM:0:1}" | /usr/bin/tr '[:lower:]' '[:upper:]')${FROM:1}"
 TO_TITLE="$(printf '%s' "${TO:0:1}" | /usr/bin/tr '[:lower:]' '[:upper:]')${TO:1}"
-case "$FROM" in
-  coordinator|coordinator2) CURSOR="cursorless" ;;
-  *) CURSOR=$(/usr/bin/head -1 "$ROOT/coordination/mailbox/seen/$FROM.txt" 2>/dev/null || echo "unknown") ;;
-esac
+# Current identities hold no cursor: a per-seat pointer belonged to a standing
+# chat, and no app member or temporary responsibility owns such a pointer.
+CURSOR="cursorless"
 BODY=$(/bin/cat)
 
 TMP=$(/usr/bin/mktemp "$ROOT/coordination/mailbox/sent/.${TS_DASH}-${FROM}-to-${TO}-${KIND}.XXXXXX.tmp")

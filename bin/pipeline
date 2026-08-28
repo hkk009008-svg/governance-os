@@ -1,0 +1,41 @@
+#!/bin/sh
+# pipeline — the single entry point.
+#
+# Resolves the primary checkout's interpreter from either the primary checkout
+# or a linked worktree (worktrees intentionally carry no duplicate .venv), and
+# clears GIT_INDEX_FILE so no caller has to remember either. Falls back to
+# python3 when the venv is absent so `bin/pipeline --help` still answers.
+set -eu
+
+unset GIT_INDEX_FILE
+
+tool_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
+common_dir=$(
+    /usr/bin/env -i PATH=/usr/bin:/bin LANG=C LC_ALL=C \
+        /usr/bin/git --no-replace-objects -C "$tool_root" \
+        rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true
+)
+if [ -n "$common_dir" ]; then
+    primary_root=$(/usr/bin/dirname -- "$common_dir")
+else
+    primary_root="$tool_root"
+fi
+
+pipeline_python="$primary_root/.venv/bin/python"
+if [ ! -x "$pipeline_python" ]; then
+    # Fall back so `bin/pipeline --help` still answers in a fresh checkout, but say
+    # so. Silently using an interpreter without this repo's dependencies made a
+    # clean clone report "wave gate did not produce both executed strict-xfail
+    # controls" -- a gate failure that was really a missing pytest, blaming the
+    # subject instead of the environment.
+    pipeline_python=$(command -v python3 || true)
+    echo "pipeline: $primary_root/.venv is absent; falling back to ${pipeline_python:-no python3}." >&2
+    echo "pipeline: gates that spawn pytest will fail for lack of dependencies, not for lack of correctness." >&2
+    echo "pipeline: python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt" >&2
+fi
+if [ -z "$pipeline_python" ] || [ ! -x "$pipeline_python" ]; then
+    echo "pipeline: no Python interpreter available" >&2
+    exit 4
+fi
+
+exec "$pipeline_python" "$tool_root/pipeline/cli.py" "$@"
