@@ -413,6 +413,30 @@ def test_merge_resolution_only_authority_change_is_detected(
     assert commits[head] == ("pipeline/mailbox_writer.py",)
 
 
+def test_tree_identical_merge_is_detected_from_its_feature_parent(
+    tmp_path: Path,
+) -> None:
+    root, _ = _init_repo(tmp_path)
+    main_branch = _git(root, "branch", "--show-current")
+    _git(root, "checkout", "-q", "-b", "feature")
+    feature = _commit_file(
+        root,
+        "pipeline/mailbox_writer.py",
+        "POLICY = 1\n",
+        "feat: writer policy",
+    )
+    _git(root, "checkout", "-q", main_branch)
+    _git(root, "merge", "--no-ff", "-q", "-m", "merge: feature", "feature")
+    merge = _git(root, "rev-parse", "HEAD")
+
+    assert _git(root, "rev-parse", f"{feature}^{{tree}}") == _git(
+        root, "rev-parse", f"{merge}^{{tree}}"
+    )
+    commits = gate.authority_commits(root, feature, merge)
+
+    assert commits == {merge: ("pipeline/mailbox_writer.py",)}
+
+
 def test_valid_high_risk_go_report_admits_range(tmp_path: Path) -> None:
     root, base = _init_repo(tmp_path)
     reviewed_head = _commit_file(

@@ -161,6 +161,7 @@ def authority_commits(root: Path, base: str, head: str) -> dict[str, tuple[str, 
     output = _git(
         root,
         "log",
+        "--sparse",
         "-m",
         f"--format={marker}%H",
         "--name-only",
