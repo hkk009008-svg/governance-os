@@ -119,9 +119,9 @@ class Outcome:
         return not self.uncovered
 
 
-def _git(root: Path, *args: str) -> str:
+def _git(root: Path, *args: str, input_data: str | None = None) -> str:
     result = git_runner.run_git(
-        root, args, mode="authority", text=True
+        root, args, mode="authority", text=True, input_data=input_data
     )
     if result.returncode != 0:
         detail = result.stderr.strip() or result.stdout.strip()
@@ -158,16 +158,19 @@ def authority_commits(root: Path, base: str, head: str) -> dict[str, tuple[str, 
     """Map each range commit touching an authority surface to those paths."""
 
     marker = "__admission_commit__:"
+    revisions = _git(root, "rev-list", f"{base}..{head}")
     output = _git(
         root,
-        "log",
-        "--sparse",
+        "diff-tree",
+        "--stdin",
+        "--root",
         "-m",
+        "-r",
         f"--format={marker}%H",
         "--name-only",
-        f"{base}..{head}",
         "--",
         *_surface_pathspecs(),
+        input_data=revisions,
     )
     commit_paths: dict[str, set[str]] = {}
     current: str | None = None
