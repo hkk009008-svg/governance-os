@@ -124,10 +124,10 @@ def test_live_review_filter_keeps_only_post_cutover_formal_artifacts() -> None:
     def request(stamp: str, commit: str) -> cc.CurrentVerifyRequest:
         return cc.CurrentVerifyRequest(
             path=(
-                "coordination/mailbox/sent/"
-                f"{stamp}-author-to-reviewer-verify-request.md"
-            ),
-            commit=commit, assigned_operator="reviewer", valid=True, problem=None,
+                    "coordination/mailbox/sent/"
+                    f"{stamp}-codex-to-claude-verify-request.md"
+                ),
+                commit=commit, assigned_operator="claude", valid=True, problem=None,
         )
 
     old, live = request("2026-08-20T12-00-00Z", historical), request(
@@ -135,13 +135,13 @@ def test_live_review_filter_keeps_only_post_cutover_formal_artifacts() -> None:
     )
     old_fail = cc.FailedVerifyRequest(
         old.path, historical,
-        "coordination/mailbox/sent/2026-08-20T12-10-00Z-reviewer-to-all-verification-report.md",
-        cutover, "reviewer",
+        "coordination/mailbox/sent/2026-08-20T12-10-00Z-claude-to-all-verification-report.md",
+        cutover, "claude",
     )
     live_fail = cc.FailedVerifyRequest(
         live.path, request_commit,
-        "coordination/mailbox/sent/2026-08-27T12-10-00Z-reviewer-to-all-verification-report.md",
-        report_commit, "reviewer",
+        "coordination/mailbox/sent/2026-08-27T12-10-00Z-claude-to-all-verification-report.md",
+        report_commit, "claude",
     )
 
     filtered = status._live_review_state(

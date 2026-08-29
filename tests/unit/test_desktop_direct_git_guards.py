@@ -88,20 +88,20 @@ def test_remediation_request_cannot_bypass_target_binding(
     head = _git(clone, "rev-parse", "HEAD")
     path = (
         "coordination/mailbox/sent/"
-        "2027-01-01T00-00-00Z-author-to-reviewer-verify-request.md"
+        "2027-01-01T00-00-00Z-codex-to-claude-verify-request.md"
     )
     (clone / path).write_text(
         f"""\
-# Author → Reviewer: malformed remediation binding
+# Codex → Claude: malformed remediation binding
 
-**When:** 2027-01-01T00:00:00Z · **From:** author (online)
+**When:** 2027-01-01T00:00:00Z · **From:** codex (online)
 
 Event type: verify-request
 Reviewed base: {failed_commit}
 Reviewed head: {head}
-Author seat: author
+Author seat: codex
 Author model: gpt-5.6-sol
-Assigned operator: reviewer
+Assigned operator: claude
 Risk class: material-behavior
 Remediates failed report: {failed_report}@{failed_commit}
 
@@ -143,20 +143,20 @@ def test_report_cannot_supersede_nonexistent_verdict(
     head = _git(clone, "rev-parse", "HEAD")
     request_path = (
         "coordination/mailbox/sent/"
-        "2027-01-01T00-10-00Z-author-to-reviewer-verify-request.md"
+        "2027-01-01T00-10-00Z-codex-to-claude-verify-request.md"
     )
     (clone / request_path).write_text(
         f"""\
-# Author → Reviewer: supersession control request
+# Codex → Claude: supersession control request
 
-**When:** 2027-01-01T00:10:00Z · **From:** author (online)
+**When:** 2027-01-01T00:10:00Z · **From:** codex (online)
 
 Event type: verify-request
 Reviewed base: {base}
 Reviewed head: {head}
-Author seat: author
+Author seat: codex
 Author model: gpt-5.6-sol
-Assigned operator: reviewer
+Assigned operator: claude
 Risk class: material-behavior
 
 ## Outcome
@@ -172,17 +172,17 @@ Cursor at send: cursorless
     request_commit = _git(clone, "rev-parse", "HEAD")
     nonexistent = (
         "coordination/mailbox/sent/"
-        "2026-12-31T00-00-00Z-reviewer-to-author-verification-report.md"
+        "2026-12-31T00-00-00Z-claude-to-codex-verification-report.md"
     )
     report_path = (
         "coordination/mailbox/sent/"
-        "2027-01-01T00-20-00Z-reviewer-to-author-verification-report.md"
+        "2027-01-01T00-20-00Z-claude-to-codex-verification-report.md"
     )
     (clone / report_path).write_text(
         f"""\
-# Reviewer → Author: invalid supersession
+# Claude → Codex: invalid supersession
 
-**When:** 2027-01-01T00:20:00Z · **From:** reviewer (online)
+**When:** 2027-01-01T00:20:00Z · **From:** claude (online)
 
 Event type: verification-report
 VERDICT: NITS
@@ -190,7 +190,7 @@ Verification request: {request_path}@{request_commit}
 Supersedes: {nonexistent}@{'a' * 40}
 Reviewed head: {head}
 Reviewed base: {base}
-Reviewer seat: reviewer
+Reviewer seat: claude
 Reviewer model: claude-opus-4-6-thinking
 Risk class: material-behavior
 

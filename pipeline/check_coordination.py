@@ -50,6 +50,7 @@ import codex_protocol_model
 import git_commit_projection
 import git_runner
 import mailbox_admission
+import mailbox_review_admission
 import mailbox_writer
 import protocol_mailbox
 import mailbox_history  # noqa: E402
@@ -844,6 +845,7 @@ def _committed_mailbox_projection(
         compact_pair_loop.REMEDIATION_BASE_CUTOFF,
         codex_protocol_model.CURRENT_REVIEW_FAMILY_CUTOVER,
         mailbox_admission.DESKTOP_WRITE_CUTOVER_COMMIT,
+        mailbox_review_admission.FORMAL_REVIEW_APP_MEMBER_CUTOVER_COMMIT,
         _LEARNING_HISTORY_CUTOVER_COMMIT,
         _ACTIVE_FAILURE_CUTOVER_COMMIT,
         _REVIEW_STATE_CUTOVER_COMMIT,
