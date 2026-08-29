@@ -95,15 +95,10 @@ temporary responsibilities for that exact range:
 `docs/protocol/agents/risk-classes.md` defines the boundary. Material behavior
 needs non-author review of the exact committed range. Authority, security,
 executable composition, side-effect gates, and trust-granting schemas also
-need different-model-family review and explicit abuse-class analysis. AGY may
-challenge and supply evidence throughout, but never publishes the formal
-GO/NITS/FAIL verdict. Native AGY may own implementation and publish its
-verify-request to Codex or Claude. Remove the temporary responsibilities when
-the review ends.
-
-The native AGY desktop member and the parent-owned `codex-agy` helper are
-different capabilities. The helper is advisory only: it cannot claim the
-`agy` identity, write mailbox artifacts, or acquire repository authority.
+need different-model-family review and explicit abuse-class analysis. Native AGY
+may implement, challenge, supply evidence, and publish its request, but never a
+formal verdict. The parent-owned `codex-agy` helper cannot claim `agy`, write
+mailbox artifacts, or gain authority. Remove responsibilities when review ends.
 
 ## Authority and durable state
 
