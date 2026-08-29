@@ -384,6 +384,8 @@ MEMBER_MODEL_FAMILIES = {"codex": "gpt", "claude": "claude", "agy": "gemini"}
 
 
 def model_family_matches_member(model_id: str, member: str) -> bool:
+    """Return whether a declared model belongs to the named desktop member."""
+
     return model_family(model_id) == MEMBER_MODEL_FAMILIES.get(member)
 
 

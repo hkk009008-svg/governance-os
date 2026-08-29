@@ -35,6 +35,8 @@ SECOND_REPORT_PATH = (
     "coordination/mailbox/sent/"
     "2026-08-07T12-30-00Z-claude-to-codex-verification-report.md"
 )
+MEMBER_REQUEST_PATH = REQUEST_PATH.replace("author-to-reviewer", "codex-to-claude")
+MEMBER_REPORT_PATH = REPORT_PATH.replace("reviewer-to-author", "claude-to-codex")
 EVIDENCE_PATH = (
     "coordination/mailbox/sent/"
     "2026-08-07T11-55-00Z-codex-to-claude-findings.md"
@@ -311,6 +313,54 @@ def _land_pair(
     )
 
 
+def _land_member_pair(
+    root: Path,
+    reviewed_base: str,
+    reviewed_head: str,
+    *,
+    request_replacement: tuple[str, str] | None = None,
+    report_replacement: tuple[str, str] | None = None,
+    report_path: str = MEMBER_REPORT_PATH,
+) -> None:
+    refs = (_mint_evidence(root),)
+    request_text = (
+        _request_text(
+            reviewed_base, reviewed_head,
+            risk_class="high-risk-control", finding_refs=refs,
+        )
+        .replace("# Author → Reviewer:", "# Codex → Claude:")
+        .replace("**From:** author", "**From:** codex")
+        .replace("Author seat: author", "Author seat: codex")
+        .replace("Assigned operator: reviewer", "Assigned operator: claude")
+    )
+    if request_replacement is not None:
+        request_text = request_text.replace(*request_replacement)
+    _commit_file(root, MEMBER_REQUEST_PATH, request_text, "review: request by member")
+    trigger = _git(root, "rev-parse", "HEAD")
+    report_text = (
+        _report_text(
+            reviewed_base, reviewed_head, trigger, verdict="GO",
+            risk_class="high-risk-control", reviewer_model="claude-opus-4-7",
+            finding_refs=refs,
+        )
+        .replace("**From:** reviewer", "**From:** claude")
+        .replace(
+            f"Verification request: {REQUEST_PATH}@",
+            f"Verification request: {MEMBER_REQUEST_PATH}@",
+        )
+        .replace("Reviewer seat: reviewer", "Reviewer seat: claude")
+    )
+    if report_replacement is not None:
+        report_text = report_text.replace(*report_replacement)
+    recipient = protocol_mailbox.EVENT_NAME_RE.fullmatch(
+        Path(report_path).name
+    ).group("recipient")
+    report_text = report_text.replace(
+        "# Claude → Codex:", f"# Claude → {recipient.capitalize()}:"
+    )
+    _commit_file(root, report_path, report_text, "review: verdict by member")
+
+
 def test_range_without_authority_surfaces_is_admitted(tmp_path: Path) -> None:
     root, base = _init_repo(tmp_path)
     _commit_file(root, "src/feature.py", "VALUE = 2\n", "feat: ordinary")
@@ -350,6 +400,75 @@ def test_gate_wires_the_exact_frozen_forward_reader_route(
         gate._validate_current_envelope(
             repo_root, raw, path, protocol_mailbox.KNOWN_KINDS, commit
         )
+
+
+def test_member_route_cutover_opens_the_writer(tmp_path: Path) -> None:
+    root, base = _init_repo(tmp_path)
+    reviewed_head = _commit_file(
+        root, "pipeline/mailbox_writer.py", "POLICY = 1\n", "feat: writer policy"
+    )
+    _land_member_pair(root, base, reviewed_head)
+
+    outcome = gate.evaluate(root, base, _git(root, "rev-parse", "HEAD"))
+
+    assert outcome.admitted, gate.render(outcome)
+    assert gate.mailbox_writer.new_write_envelope_problem(
+        "verify-request", "codex", "claude"
+    ) is None
+    assert gate.mailbox_writer.new_write_envelope_problem(
+        "verification-report", "claude", "codex"
+    ) is None
+
+
+@pytest.mark.parametrize(
+    ("request_replacement", "report_replacement", "report_path", "reason"),
+    (
+        (("Author model: gpt-5.6-sol", "Author model: gemini-3.7-flash-high"), None,
+         MEMBER_REPORT_PATH, "author model family does not match author member"),
+        (None, ("Reviewer model: claude-opus-4-7", "Reviewer model: gpt-5.6-sol"),
+         MEMBER_REPORT_PATH, "reviewer model family does not match reviewer member"),
+        (None, None, MEMBER_REPORT_PATH.replace("-to-codex-", "-to-agy-"),
+         "report recipient does not match request author"),
+    ),
+)
+def test_member_route_forward_reader_rejects_identity_laundering(
+    tmp_path: Path,
+    request_replacement: tuple[str, str] | None,
+    report_replacement: tuple[str, str] | None,
+    report_path: str,
+    reason: str,
+) -> None:
+    root, base = _init_repo(tmp_path)
+    reviewed_head = _commit_file(
+        root, "pipeline/mailbox_writer.py", "POLICY = 1\n", "feat: writer policy"
+    )
+    _land_member_pair(
+        root, base, reviewed_head,
+        request_replacement=request_replacement,
+        report_replacement=report_replacement,
+        report_path=report_path,
+    )
+
+    outcome = gate.evaluate(root, base, _git(root, "rev-parse", "HEAD"))
+
+    assert not outcome.admitted
+    assert any(reason in detail for _, detail in outcome.skipped_reports)
+
+
+@pytest.mark.parametrize(
+    ("kind", "sender", "recipient"),
+    (
+        ("verify-request", "codex", "reviewer"),
+        ("verify-request", "codex", "codex"),
+        ("verification-report", "agy", "codex"),
+        ("verification-report", "claude", "claude"),
+        ("verification-report", "reviewer", "codex"),
+    ),
+)
+def test_member_route_forward_reader_rejects_mixing_and_self_review(
+    kind: str, sender: str, recipient: str,
+) -> None:
+    assert protocol_mailbox.formal_review_route_problem(kind, sender, recipient)
 
 
 def test_every_declared_trust_or_effect_surface_is_matched_non_vacuously(

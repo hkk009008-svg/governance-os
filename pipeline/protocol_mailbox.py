@@ -43,6 +43,8 @@ OWNING_IDENTITIES = frozenset((*APP_MEMBERS, *ROLES, *SEATS))
 
 
 def formal_review_route_problem(kind: str, sender: str, recipient: str) -> str | None:
+    """Validate the app-member route understood by the forward reader."""
+
     if kind == "verify-request":
         if sender not in APP_MEMBERS:
             return "verify-request author must be codex, claude, or agy"

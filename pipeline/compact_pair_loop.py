@@ -509,9 +509,14 @@ def _parse_verify_request_bytes(
         raise CompactPairError("verify-request path is not canonical")
     filename_author = match.group("author")
     filename_reviewer = match.group("operator")
-    app_route = filename_author in protocol_mailbox.APP_MEMBERS or filename_reviewer in protocol_mailbox.APP_MEMBERS
+    app_route = (
+        filename_author in protocol_mailbox.APP_MEMBERS
+        or filename_reviewer in protocol_mailbox.APP_MEMBERS
+    )
     if app_route:
-        problem = protocol_mailbox.formal_review_route_problem("verify-request", filename_author, filename_reviewer)
+        problem = protocol_mailbox.formal_review_route_problem(
+            "verify-request", filename_author, filename_reviewer
+        )
         if problem is not None:
             raise CompactPairError(problem)
     elif (filename_author == "author") != (filename_reviewer == "reviewer"):
@@ -800,7 +805,9 @@ def validate_request_candidate(root: Path, request: VerifyRequest) -> list[str]:
             "for a new verify-request"
         ]
     if request.author_seat in protocol_mailbox.APP_MEMBERS and not (
-        codex_protocol_model.model_family_matches_member(request.author_model, request.author_seat)
+        codex_protocol_model.model_family_matches_member(
+            request.author_model, request.author_seat
+        )
     ):
         return ["author model family does not match author member"]
     try:
@@ -977,9 +984,14 @@ def _parse_verification_report_bytes(
         raise CompactPairError("verification-report path is not canonical Operator output")
     filename_reviewer = match.group("reviewer")
     filename_recipient = match.group("recipient")
-    app_route = filename_reviewer in protocol_mailbox.APP_MEMBERS or filename_recipient in protocol_mailbox.APP_MEMBERS
+    app_route = (
+        filename_reviewer in protocol_mailbox.APP_MEMBERS
+        or filename_recipient in protocol_mailbox.APP_MEMBERS
+    )
     if app_route:
-        problem = protocol_mailbox.formal_review_route_problem("verification-report", filename_reviewer, filename_recipient)
+        problem = protocol_mailbox.formal_review_route_problem(
+            "verification-report", filename_reviewer, filename_recipient
+        )
         if problem is not None:
             raise CompactPairError(problem)
     elif filename_recipient != "all" and (
@@ -1138,11 +1150,15 @@ def _report_structure_violations(
     if report.reviewer_seat == request.author_seat:
         violations.append("reviewer seat equals author seat")
     if request.author_seat in protocol_mailbox.APP_MEMBERS and not (
-        codex_protocol_model.model_family_matches_member(request.author_model, request.author_seat)
+        codex_protocol_model.model_family_matches_member(
+            request.author_model, request.author_seat
+        )
     ):
         violations.append("author model family does not match author member")
     if report.reviewer_seat in protocol_mailbox.APP_MEMBERS and not (
-        codex_protocol_model.model_family_matches_member(report.reviewer_model, report.reviewer_seat)
+        codex_protocol_model.model_family_matches_member(
+            report.reviewer_model, report.reviewer_seat
+        )
     ):
         violations.append("reviewer model family does not match reviewer member")
     report_match = REPORT_RE.fullmatch(report.path)
