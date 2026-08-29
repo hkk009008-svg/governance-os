@@ -52,7 +52,7 @@ def _repo_whose_head_exceeds_the_ceiling(tmp_path: Path) -> tuple[Path, str]:
     _git(root, "commit", "-qm", "base")
     base = _git(root, "rev-parse", "HEAD")
     (root / "pipeline" / "existing.py").write_text(
-        "x = 1\n" + "y = 1\n" * 200, encoding="utf-8"
+        "x = 1\n" + "y = 1\n" * (cnc.MAX_PYTHON_NET_GROWTH + 50), encoding="utf-8"
     )
     _git(root, "add", "-A")
     _git(root, "commit", "-qm", "oversized")
