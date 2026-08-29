@@ -201,6 +201,7 @@ jobs:
   # surface are admitted without any new requirement. Stdlib-only: no pip
   # install. Reads no github.event.* data; the range comes from git itself.
   admission-gate:
+    # Live canary: this uncovered authority-surface commit must be refused.
     name: risk-aware admission (authority surfaces)
     runs-on: macos-latest
     timeout-minutes: 10
