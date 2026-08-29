@@ -14,7 +14,6 @@ import git_runner
 
 ROOT = Path(__file__).resolve().parent.parent
 TESTS = ROOT / "tests"
-# Raised to 200 on 2026-08-30 by owner decision; rationale in the commit.
 MAX_PYTHON_NET_GROWTH = 200
 MAX_PYTHON_FILE_NET_GROWTH = 250
 MAX_PYTHON_FILE_ADDITIONS = 400

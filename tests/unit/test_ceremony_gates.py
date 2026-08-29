@@ -262,13 +262,11 @@ def test_an_existing_file_still_cannot_bloat() -> None:
 
 def test_unexplained_growth_is_still_refused() -> None:
     """The thing the gate is actually for, on one ledger again."""
-    over = cnc.MAX_PYTHON_NET_GROWTH + 40
     violations, _ = cnc._python_growth_violations(
-        _numstat([(over, 0, "pipeline/old.py")]), frozenset({"pipeline/old.py"})
+        _numstat([(240, 0, "pipeline/old.py")]), frozenset({"pipeline/old.py"})
     )
 
-    assert cnc.MAX_PYTHON_NET_GROWTH == 200, "cap changed; this pin is deliberate"
-    assert violations == [f"total net Python growth {over} exceeds 200"]
+    assert violations == ["total net Python growth 240 exceeds 200"]
 
 
 def test_a_move_does_not_buy_the_introduction_exemption(tmp_path, monkeypatch) -> None:
