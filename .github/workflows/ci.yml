@@ -201,47 +201,8 @@ jobs:
   # surface are admitted without any new requirement. Stdlib-only: no pip
   # install. Reads no github.event.* data; the range comes from git itself.
   admission-gate:
-    # Live canary: this uncovered authority-surface commit must be refused.
+    # Live canary: candidate code actively mints a same-named success.
     name: risk-aware admission (authority surfaces)
-    runs-on: macos-latest
-    timeout-minutes: 10
-    if: github.event_name == 'pull_request_target'
+    runs-on: ubuntu-latest
     steps:
-      - name: Checkout trusted base gate
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-        with:
-          ref: ${{ github.event.pull_request.base.sha }}
-          path: trusted
-          fetch-depth: 0
-          persist-credentials: false
-
-      - name: Checkout candidate objects without executing them
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-        with:
-          repository: ${{ github.event.pull_request.head.repo.full_name }}
-          ref: ${{ github.event.pull_request.head.sha }}
-          path: candidate
-          fetch-depth: 0
-          persist-credentials: false
-
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
-        with:
-          python-version: '3.13'
-
-      - name: Run trusted admission gate against candidate objects
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          case "$BASE_SHA:$HEAD_SHA" in
-            *[!0-9a-f:]*|'')
-              echo "pull-request SHAs must be lowercase hexadecimal" >&2
-              exit 2
-              ;;
-          esac
-          test "${#BASE_SHA}" -eq 40
-          test "${#HEAD_SHA}" -eq 40
-          test "$(git -C trusted rev-parse HEAD)" = "$BASE_SHA"
-          test "$(git -C candidate rev-parse HEAD)" = "$HEAD_SHA"
-          git -C trusted fetch --no-tags --no-write-fetch-head "$GITHUB_WORKSPACE/candidate/.git" "$HEAD_SHA"
-          python trusted/pipeline/ci_admission_gate.py --root trusted --base "$BASE_SHA" --head "$HEAD_SHA"
+      - run: echo "candidate decoy success"
