@@ -1,11 +1,11 @@
 # verification-report — outcome evidence reference
 
-Formal review validation: `pipeline/compact_pair_loop.py`. Only the
-assigned non-author reviewer emits GO, NITS, or FAIL. The fixed mailbox writer
-supplies the H1, timestamp/from envelope, and cursor footer.
+Formal review validation: `pipeline/compact_pair_loop.py`. Only the assigned
+non-author Codex or Claude reviewer emits GO, NITS, or FAIL. The fixed mailbox
+writer supplies the H1, timestamp/from envelope, and cursor footer.
 
 ```bash
-bin/pipeline mail send reviewer <recipient> verification-report "<subject>" <<'EOF'
+bin/pipeline mail send <codex|claude> <author-member|all> verification-report "<subject>" <<'EOF'
 <body>
 EOF
 ```
@@ -19,7 +19,7 @@ Verification request: coordination/mailbox/sent/<request>.md@<40-lowercase-reque
 Reviewed repository: <absolute canonical Git worktree root; omit only for Pipeline-local review>
 Reviewed head: <40-lowercase-hex>
 Reviewed base: <40-lowercase-hex>
-Reviewer seat: reviewer
+Reviewer seat: <codex|claude>
 Reviewer model: <system-visible model; different family from Author model for high-risk-control>
 Risk class: material-behavior | high-risk-control
 <high-risk-control only: add `Abuse Class Assessment: bound-to-request` here>

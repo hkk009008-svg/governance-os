@@ -18,6 +18,8 @@ committed review at all. This gate closes exactly that gap and nothing more:
      NITS and whose bound request declares `high-risk-control`. Validation is
      delegated to the canonical `compact_pair_loop.validate_report`, which
      validates the report's declared non-author seat and model-family fields.
+     A current FAIL blocks until superseded; valid remediation carries the
+     failed report's reviewed range forward instead of orphaning it.
      Repository bytes cannot attest which provider actually executed a review;
      protected external review identity/rules remain a separate requirement.
 
@@ -44,6 +46,7 @@ import compact_pair_loop as pair  # noqa: E402
 import git_runner  # noqa: E402
 import mailbox_review_admission  # noqa: E402
 import mailbox_writer  # noqa: E402
+import protocol_mailbox  # noqa: E402
 
 # Authority surfaces: executable authority, side-effect gating, trust-granting
 # composition, and the integration gate itself. Directory entries end with a
@@ -111,12 +114,13 @@ class Outcome:
     head: str
     authority_commits: dict[str, tuple[str, ...]] = field(default_factory=dict)
     coverages: list[Coverage] = field(default_factory=list)
+    blocking_failures: list[tuple[str, frozenset[str]]] = field(default_factory=list)
     skipped_reports: list[tuple[str, str]] = field(default_factory=list)
     uncovered: dict[str, tuple[str, ...]] = field(default_factory=dict)
 
     @property
     def admitted(self) -> bool:
-        return not self.uncovered
+        return not self.uncovered and not self.blocking_failures
 
 
 def _git(root: Path, *args: str, input_data: str | None = None) -> str:
@@ -194,21 +198,23 @@ def authority_commits(root: Path, base: str, head: str) -> dict[str, tuple[str, 
     }
 
 
-def _events_added_in_range(root: Path, base: str, head: str) -> list[str]:
+def _events_touched_in_range(root: Path, base: str, head: str) -> list[str]:
+    revisions = _git(root, "rev-list", f"{base}..{head}")
     output = _git(
         root,
-        "diff",
+        "diff-tree",
+        "--stdin",
+        "--root",
+        "-m",
+        "-r",
+        "--format=",
         "--name-only",
-        "--diff-filter=A",
-        f"{base}..{head}",
+        "--diff-filter=ADMRT",
         "--",
         _MAILBOX_SENT.rstrip("/"),
+        input_data=revisions,
     )
-    return sorted(
-        line.strip()
-        for line in output.splitlines()
-        if line.strip()
-    )
+    return sorted({line.strip() for line in output.splitlines() if line.strip()})
 
 
 def _known_kinds_at(root: Path, head: str) -> frozenset[str]:
@@ -272,7 +278,7 @@ def _validate_current_envelope(
 
 def _introduction_commit(root: Path, head: str, path: str) -> str:
     commit = _git(
-        root, "log", "--diff-filter=A", "--format=%H", "-1", head, "--", path
+        root, "log", "--full-history", "--diff-filter=A", "--format=%H", "-1", head, "--", path
     ).strip()
     if len(commit) != 40:
         raise AdmissionError(f"cannot resolve introduction commit for {path}")
@@ -293,6 +299,20 @@ def _reviewed_commits(root: Path, report: pair.VerificationReport) -> frozenset[
     return frozenset(line.strip() for line in output.splitlines() if line.strip())
 
 
+def _coverage_commits(
+    root: Path,
+    report: pair.VerificationReport,
+    reports_by_ref: dict[tuple[str, str], pair.VerificationReport],
+) -> frozenset[str]:
+    commits = set(_reviewed_commits(root, report))
+    seen: set[tuple[str, str]] = set()
+    while report.supersedes in reports_by_ref and report.supersedes not in seen:
+        seen.add(report.supersedes)
+        report = reports_by_ref[report.supersedes]
+        commits.update(_reviewed_commits(root, report))
+    return frozenset(commits)
+
+
 def evaluate(root: Path, base: str, head: str) -> Outcome:
     outcome = Outcome(base=base, head=head)
     outcome.authority_commits = authority_commits(root, base, head)
@@ -300,15 +320,19 @@ def evaluate(root: Path, base: str, head: str) -> Outcome:
         return outcome
 
     kinds = _known_kinds_at(root, head)
-    added_events = _events_added_in_range(root, base, head)
+    touched_events = _events_touched_in_range(root, base, head)
     parsed: dict[str, pair.VerificationReport] = {}
-    for path in (
-        item for item in added_events if item.endswith(_REPORT_SUFFIX)
-    ):
-        raw = _git(root, "show", f"{head}:{path}").encode("utf-8")
+    for path in (item for item in touched_events if item.endswith(_REPORT_SUFFIX)):
+        introduction = _introduction_commit(root, head, path)
+        try:
+            raw = _git(root, "show", f"{head}:{path}").encode("utf-8")
+        except AdmissionError as exc:
+            raise AdmissionError(f"immutable review artifact is absent: {path}") from exc
+        if raw != _git(root, "show", f"{introduction}:{path}").encode("utf-8"):
+            raise AdmissionError(f"immutable review artifact changed: {path}")
         try:
             _validate_current_envelope(
-                root, raw, path, kinds, _introduction_commit(root, head, path)
+                root, raw, path, kinds, introduction
             )
             report = pair.parse_verification_report_committed_bytes(root, path, raw)
         except (mailbox_writer.MailboxWriterError, pair.CompactPairError) as exc:
@@ -320,13 +344,9 @@ def evaluate(root: Path, base: str, head: str) -> Outcome:
             continue
         parsed[path] = report
 
-    superseded: set[tuple[str, str]] = set()
-    introductions: dict[str, str] = {}
-    for path, report in parsed.items():
-        if report.supersedes is not None:
-            superseded.add(report.supersedes)
-    for path in parsed:
-        introductions[path] = _introduction_commit(root, head, path)
+    superseded = {report.supersedes for report in parsed.values() if report.supersedes}
+    introductions = {path: _introduction_commit(root, head, path) for path in parsed}
+    reports_by_ref = {(path, introductions[path]): report for path, report in parsed.items()}
 
     for path, report in sorted(parsed.items()):
         if (path, introductions[path]) in superseded:
@@ -336,6 +356,14 @@ def evaluate(root: Path, base: str, head: str) -> Outcome:
             outcome.skipped_reports.append(
                 (path, f"verdict {report.verdict} does not admit")
             )
+            if (
+                report.verdict == "FAIL"
+                and report.reviewer_seat in protocol_mailbox.FORMAL_REVIEWERS
+            ):
+                failed_commits = _coverage_commits(root, report, reports_by_ref)
+                failed_commits &= outcome.authority_commits.keys()
+                if failed_commits:
+                    outcome.blocking_failures.append((path, frozenset(failed_commits)))
             continue
         if report.risk_class != pair.HIGH_RISK_CONTROL or not report.risk_class_explicit:
             outcome.skipped_reports.append(
@@ -352,7 +380,7 @@ def evaluate(root: Path, base: str, head: str) -> Outcome:
                 path=path,
                 verdict=report.verdict,
                 risk_class=report.risk_class,
-                reviewed_commits=_reviewed_commits(root, report),
+                reviewed_commits=_coverage_commits(root, report, reports_by_ref),
             )
         )
 
@@ -388,23 +416,22 @@ def render(outcome: Outcome) -> str:
         )
     for path, reason in outcome.skipped_reports:
         lines.append(f"  non-admitting report: {path} — {reason}")
+    for path, commits in outcome.blocking_failures:
+        lines.append(
+            f"  active FAIL: {path} [{len(commits)} authority commit(s) in range]"
+        )
     if outcome.admitted:
         lines.append(
             "  RESULT: structurally admitted — every authority commit is covered "
             "by declared review evidence (runtime reviewer identity is externally attested)"
         )
         return "\n".join(lines)
-    lines.append(
-        "  RESULT: BLOCKED — authority-surface commits lack a committed "
-        f"GO/NITS {pair.HIGH_RISK_CONTROL} verification-report covering them:"
-    )
+    lines.append("  RESULT: BLOCKED — active FAIL or uncovered authority-surface commit")
     for commit, paths in sorted(outcome.uncovered.items()):
         lines.append(f"    {commit[:12]} touches {', '.join(paths)}")
     lines.append(
-        "  remedy: obtain an externally attestable non-author, different-model "
-        "review of the exact range, then publish its Compact Pair verify-request "
-        "and GO/NITS report through the fixed writer and commit both events on "
-        "this branch"
+        "  remedy: explicitly supersede active FAILs and obtain a committed "
+        f"GO/NITS {pair.HIGH_RISK_CONTROL} review for uncovered commits"
     )
     return "\n".join(lines)
 

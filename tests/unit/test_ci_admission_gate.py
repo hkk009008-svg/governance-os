@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -25,6 +26,14 @@ REQUEST_PATH = (
 REPORT_PATH = (
     "coordination/mailbox/sent/"
     "2026-08-07T12-10-00Z-claude-to-codex-verification-report.md"
+)
+SECOND_REQUEST_PATH = (
+    "coordination/mailbox/sent/"
+    "2026-08-07T12-20-00Z-codex-to-claude-verify-request.md"
+)
+SECOND_REPORT_PATH = (
+    "coordination/mailbox/sent/"
+    "2026-08-07T12-30-00Z-claude-to-codex-verification-report.md"
 )
 EVIDENCE_PATH = (
     "coordination/mailbox/sent/"
@@ -119,6 +128,7 @@ def _request_text(
     *,
     risk_class: str,
     finding_refs: tuple[str, ...],
+    timestamp: str = "2026-08-07T12:00:00Z",
 ) -> str:
     abuse = (
         ""
@@ -132,7 +142,7 @@ def _request_text(
     return f"""\
 # Codex → Claude: verify outcome
 
-**When:** 2026-08-07T12:00:00Z · **From:** codex (online)
+**When:** {timestamp} · **From:** codex (online)
 
 Event type: verify-request
 Reviewed head: {head}
@@ -162,6 +172,8 @@ def _report_text(
     reviewer_model: str,
     finding_refs: tuple[str, ...],
     disposition: str = "addressed",
+    timestamp: str = "2026-08-07T12:10:00Z",
+    request_path: str = REQUEST_PATH,
 ) -> str:
     abuse_binding = (
         ""
@@ -172,11 +184,11 @@ def _report_text(
     return f"""\
 # Claude → Codex: outcome verification
 
-**When:** 2026-08-07T12:10:00Z · **From:** claude (online)
+**When:** {timestamp} · **From:** claude (online)
 
 Event type: verification-report
 VERDICT: {verdict}
-Verification request: {REQUEST_PATH}@{trigger}
+Verification request: {request_path}@{trigger}
 Reviewed head: {head}
 Reviewed base: {base}
 Reviewer seat: claude
@@ -261,20 +273,28 @@ def _land_pair(
     risk_class: str = "high-risk-control",
     reviewer_model: str = "claude-opus-4-7",
     disposition: str = "addressed",
+    request_path: str = REQUEST_PATH,
+    report_path: str = REPORT_PATH,
+    timestamps: tuple[str, str] = ("2026-08-07T12:00:00Z", "2026-08-07T12:10:00Z"),
+    finding_refs: tuple[str, ...] | None = None,
 ) -> None:
-    refs = (_mint_evidence(root),)
+    refs = finding_refs or (_mint_evidence(root),)
     _commit_file(
         root,
-        REQUEST_PATH,
+        request_path,
         _request_text(
-            reviewed_base, reviewed_head, risk_class=risk_class, finding_refs=refs
+            reviewed_base,
+            reviewed_head,
+            risk_class=risk_class,
+            finding_refs=refs,
+            timestamp=timestamps[0],
         ),
         "review: request verification",
     )
     trigger = _git(root, "rev-parse", "HEAD")
     _commit_file(
         root,
-        REPORT_PATH,
+        report_path,
         _report_text(
             reviewed_base,
             reviewed_head,
@@ -284,6 +304,8 @@ def _land_pair(
             reviewer_model=reviewer_model,
             finding_refs=refs,
             disposition=disposition,
+            timestamp=timestamps[1],
+            request_path=request_path,
         ),
         "review: publish verdict",
     )
@@ -536,18 +558,67 @@ def test_candidate_only_request_and_report_admit_while_checkout_stays_at_base(
     assert [coverage.verdict for coverage in outcome.coverages] == ["GO"]
 
 
-def test_fail_verdict_does_not_admit(tmp_path: Path) -> None:
+@pytest.mark.parametrize("fresh_verdict", ("GO", "NITS"))
+@pytest.mark.parametrize("tamper", ("delete", "modify", "type"))
+def test_unsuperseded_current_fail_blocks_a_fresh_admitting_verdict(
+    tmp_path: Path, fresh_verdict: str, tamper: str,
+) -> None:
     root, base = _init_repo(tmp_path)
     reviewed_head = _commit_file(
         root, "pipeline/mailbox_writer.py", "WRITER = 1\n", "feat: writer"
     )
-    _land_pair(root, base, reviewed_head, verdict="FAIL")
+    refs = (_mint_evidence(root),)
+    _land_pair(
+        root, base, reviewed_head, verdict="FAIL",
+        disposition="counter-evidence", finding_refs=refs,
+    )
+    _land_pair(
+        root, base, reviewed_head, verdict=fresh_verdict,
+        request_path=SECOND_REQUEST_PATH, report_path=SECOND_REPORT_PATH,
+        timestamps=("2026-08-07T12:20:00Z", "2026-08-07T12:30:00Z"),
+        finding_refs=refs,
+    )
     head = _git(root, "rev-parse", "HEAD")
 
     outcome = gate.evaluate(root, base, head)
 
-    assert not outcome.admitted
-    assert any("FAIL" in reason for _, reason in outcome.skipped_reports)
+    assert not outcome.admitted, gate.render(outcome)
+    assert outcome.uncovered == {}
+    assert [path for path, _ in outcome.blocking_failures] == [REPORT_PATH]
+    tamper_base = head
+    (root / "pipeline/mailbox_writer.py").write_text("WRITER = 2\n", encoding="utf-8")
+    _git(root, "add", "pipeline/mailbox_writer.py")
+    if tamper == "delete":
+        _git(root, "rm", "-q", REPORT_PATH)
+    elif tamper == "modify":
+        (root / REPORT_PATH).write_text("changed\n", encoding="utf-8")
+        _git(root, "add", REPORT_PATH)
+    else:
+        (root / REPORT_PATH).unlink()
+        (root / REPORT_PATH).symlink_to("missing-report")
+        _git(root, "add", REPORT_PATH)
+    _git(root, "commit", "-q", "-m", f"test: {tamper} immutable FAIL")
+    with pytest.raises(gate.AdmissionError, match="immutable review artifact"):
+        gate.evaluate(root, tamper_base, _git(root, "rev-parse", "HEAD"))
+
+
+def test_remediation_coverage_inherits_only_the_superseded_reports_range(
+    tmp_path: Path,
+) -> None:
+    root, base = _init_repo(tmp_path)
+    original = _commit_file(root, "pipeline/original.py", "x = 1\n", "original")
+    fix = _commit_file(root, "pipeline/fix.py", "x = 2\n", "remediation")
+    unrelated_head = _commit_file(root, "src/unrelated.py", "x = 3\n", "unrelated")
+    failed_ref = (REPORT_PATH, "1" * 40)
+    unrelated_ref = (SECOND_REPORT_PATH, "2" * 40)
+    Report = SimpleNamespace
+    failed = Report(reviewed_base=base, reviewed_head=original, supersedes=None)
+    unrelated = Report(reviewed_base=fix, reviewed_head=unrelated_head, supersedes=None)
+    remediation = Report(reviewed_base=original, reviewed_head=fix, supersedes=failed_ref)
+
+    assert gate._coverage_commits(
+        root, remediation, {failed_ref: failed, unrelated_ref: unrelated}
+    ) == frozenset({original, fix})
 
 
 def test_nits_with_unresolved_hard_boundary_does_not_admit(tmp_path: Path) -> None:

@@ -161,5 +161,6 @@ Cursor at send: cursorless
     reviewed = coordination.inspect_verify_review_state(clone)
     review, _ = status._collect_review_state(clone, status.collect_git(clone))
     assert all(item.path != request_path for item in reviewed.pending)
-    assert review["current_request"] is None
-    assert review["gate"]["status"] == "PASS"
+    assert all(item.request_path != request_path for item in reviewed.failed)
+    assert not review["current_request"] or review["current_request"]["path"] != request_path
+    assert not review["failed_review"] or review["failed_review"]["request_path"] != request_path
