@@ -44,6 +44,7 @@ import compact_pair_loop as pair  # noqa: E402
 import git_runner  # noqa: E402
 import mailbox_review_admission  # noqa: E402
 import mailbox_writer  # noqa: E402
+import protocol_mailbox  # noqa: E402
 
 # Authority surfaces: executable authority, side-effect gating, trust-granting
 # composition, and the integration gate itself. Directory entries end with a
@@ -251,7 +252,12 @@ def _validate_current_envelope(
         introduction_commit,
         raw,
     )
-    if problem is not None and not frozen_forward_reader:
+    member_forward_reader = protocol_mailbox.formal_review_route_problem(
+        envelope.group("kind"),
+        envelope.group("sender"),
+        envelope.group("recipient"),
+    ) is None
+    if problem is not None and not (frozen_forward_reader or member_forward_reader):
         raise pair.CompactPairError(problem)
 
 

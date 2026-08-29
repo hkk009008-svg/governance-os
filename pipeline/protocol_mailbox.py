@@ -20,6 +20,7 @@ KIND_FILE = ROOT / "coordination" / "mailbox" / "kinds.txt"
 # responsibility for one exact range, not another persistent member roster.
 APP_MEMBERS = ("codex", "claude", "agy")
 ROLES = ("author", "reviewer")
+FORMAL_REVIEWERS = frozenset({"codex", "claude"})
 # The pre-collapse seat names stay lawful for READING committed history: 967
 # events carry them, and rewriting those filenames would be a history rewrite.
 # They are compatibility identities, not positions anyone occupies.
@@ -39,6 +40,24 @@ RECIPIENTS = (*EVENT_IDENTITIES, "all")
 # roles and retired pair seats remain accepted only so committed history keeps
 # parsing; mailbox_writer applies the new-write kind/identity split.
 OWNING_IDENTITIES = frozenset((*APP_MEMBERS, *ROLES, *SEATS))
+
+
+def formal_review_route_problem(kind: str, sender: str, recipient: str) -> str | None:
+    """Validate the app-member route understood by the forward reader."""
+
+    if kind == "verify-request":
+        if sender not in APP_MEMBERS:
+            return "verify-request author must be codex, claude, or agy"
+        if recipient not in FORMAL_REVIEWERS:
+            return "verify-request reviewer must be codex or claude"
+    elif kind == "verification-report":
+        if sender not in FORMAL_REVIEWERS:
+            return "verification-report publisher must be codex or claude"
+        if recipient not in {*APP_MEMBERS, "all"}:
+            return "verification-report recipient must be codex, claude, agy, or all"
+    else:
+        return f"{kind} is not a formal-review kind"
+    return f"{kind} cannot be self-addressed" if sender == recipient else None
 
 
 def load_known_kinds(root: Path | None = None) -> frozenset[str]:
