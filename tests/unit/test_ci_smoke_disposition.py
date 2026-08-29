@@ -112,13 +112,17 @@ def test_architecture_advisory_warns_but_is_exit_neutral(
 
 def test_workflow_keeps_parallel_verification_jobs() -> None:
     workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    admission = (ROOT / ".github/workflows/admission.yml").read_text(
+        encoding="utf-8"
+    )
 
     assert "  smoke:\n" in workflow
     assert "  pytest:\n" in workflow
-    assert "  admission-gate:\n" in workflow
+    assert "  admission-gate:\n" in admission
+    assert "  admission-gate:\n" not in workflow
     # No CI job writes to the repository, so none depends on the others in a
     # way that could publish state after a green run.
-    assert "needs:" not in workflow
+    assert "needs:" not in workflow + admission
 
 
 def test_same_kind_advisory_flood_prints_one_summary_line(

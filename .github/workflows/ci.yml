@@ -29,13 +29,9 @@
 #
 # Actions are pinned to immutable commits; comments record the verified release tags.
 #
-# Security review:
-#   - No untrusted-input interpolation in `run:` blocks.
-#   - The concurrency key separates trusted pull_request_target admission from
-#     candidate pull_request tests, so neither half can cancel the other.
-#   - The trusted admission job receives only PR base/head repository+SHA values
-#     as action inputs/environment, validates both SHAs, and never executes the
-#     candidate checkout. No event value is interpolated directly into shell.
+# Security review: no untrusted-input interpolation appears in `run:` blocks.
+# Trusted pull_request_target admission lives alone in admission.yml so a
+# skipped candidate-workflow job cannot share its required check context.
 
 name: CI
 
@@ -43,7 +39,6 @@ on:
   push:
     branches: [main]
   pull_request:
-  pull_request_target:
   workflow_dispatch:
 
 concurrency:
@@ -59,7 +54,6 @@ env:
 jobs:
   smoke:
     name: ci_smoke (governance gates + runtime invariants)
-    if: github.event_name != 'pull_request_target'
     runs-on: macos-latest
     timeout-minutes: 15
     env:
@@ -85,7 +79,6 @@ jobs:
 
   pytest:
     name: pytest tests (Python ${{ matrix.python-version }})
-    if: github.event_name != 'pull_request_target'
     runs-on: macos-latest
     timeout-minutes: 15
     strategy:
@@ -128,7 +121,6 @@ jobs:
     # tests/conftest.py) is proven — without it, a non-repo scratch root would
     # find the enclosing checkout instead of answering "unavailable".
     name: pytest (ubuntu, in-repo scratch)
-    if: github.event_name != 'pull_request_target'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -162,7 +154,6 @@ jobs:
     # ruff/mypy are installed UNPINNED here on purpose — this job is advisory;
     # gating requires a hashed requirements-lint.txt first.
     name: lint (advisory, non-gating)
-    if: github.event_name != 'pull_request_target'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     continue-on-error: true
@@ -192,58 +183,3 @@ jobs:
           shellcheck --severity=warning \
             coordination/bin/send-event \
             bin/pipeline || true
-
-  # Risk-aware admission (audit P0): a PR range that touches an authority
-  # surface (fixed writers, app adapters, dispatchers, CI itself — the list lives
-  # in pipeline/ci_admission_gate.py) must carry a committed GO/NITS
-  # high-risk-control verification-report covering those commits, validated by
-  # the existing compact_pair_loop machinery. Ranges that touch no authority
-  # surface are admitted without any new requirement. Stdlib-only: no pip
-  # install. Reads no github.event.* data; the range comes from git itself.
-  admission-gate:
-    # The event suffix is part of the required-check boundary. Without it,
-    # the skipped pull_request copy shares a context with the trusted
-    # pull_request_target result and can satisfy branch protection.
-    name: risk-aware admission (authority surfaces; ${{ github.event_name }})
-    runs-on: macos-latest
-    timeout-minutes: 10
-    if: github.event_name == 'pull_request_target'
-    steps:
-      - name: Checkout trusted base gate
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-        with:
-          ref: ${{ github.event.pull_request.base.sha }}
-          path: trusted
-          fetch-depth: 0
-          persist-credentials: false
-
-      - name: Checkout candidate objects without executing them
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-        with:
-          repository: ${{ github.event.pull_request.head.repo.full_name }}
-          ref: ${{ github.event.pull_request.head.sha }}
-          path: candidate
-          fetch-depth: 0
-          persist-credentials: false
-
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
-        with:
-          python-version: '3.13'
-
-      - name: Run trusted admission gate against candidate objects
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          case "$BASE_SHA:$HEAD_SHA" in
-            *[!0-9a-f:]*|'')
-              echo "pull-request SHAs must be lowercase hexadecimal" >&2
-              exit 2
-              ;;
-          esac
-          test "${#BASE_SHA}" -eq 40
-          test "${#HEAD_SHA}" -eq 40
-          test "$(git -C trusted rev-parse HEAD)" = "$BASE_SHA"
-          test "$(git -C candidate rev-parse HEAD)" = "$HEAD_SHA"
-          git -C trusted fetch --no-tags --no-write-fetch-head "$GITHUB_WORKSPACE/candidate/.git" "$HEAD_SHA"
-          python trusted/pipeline/ci_admission_gate.py --root trusted --base "$BASE_SHA" --head "$HEAD_SHA"

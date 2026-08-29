@@ -1,4 +1,4 @@
-"""Supply-chain invariants for the only GitHub Actions workflow."""
+"""Supply-chain invariants for the candidate and trusted GitHub workflows."""
 from __future__ import annotations
 
 import os
@@ -16,6 +16,19 @@ def _workflow(repo_root: Path) -> str:
     return (repo_root / ".github/workflows/ci.yml").read_text(encoding="utf-8")
 
 
+def _admission_workflow(repo_root: Path) -> str:
+    return (repo_root / ".github/workflows/admission.yml").read_text(encoding="utf-8")
+
+
+def _all_workflows(repo_root: Path) -> dict[str, str]:
+    workflow_dir = repo_root / ".github/workflows"
+    return {
+        path.name: path.read_text(encoding="utf-8")
+        for pattern in ("*.yml", "*.yaml")
+        for path in workflow_dir.glob(pattern)
+    }
+
+
 def _job(workflow: str, name: str, next_name: str | None) -> str:
     start = workflow.index(f"  {name}:\n")
     end = workflow.index(f"  {next_name}:\n", start) if next_name else len(workflow)
@@ -24,9 +37,10 @@ def _job(workflow: str, name: str, next_name: str | None) -> str:
 
 def test_actions_are_full_sha_pinned_with_version_annotations(repo_root):
     workflow = _workflow(repo_root)
+    admission_workflow = _admission_workflow(repo_root)
     uses = re.findall(
         r"^\s*(?:-\s+)?uses:\s*([^\s#]+)(?:\s+#\s*(\S+))?$",
-        workflow,
+        workflow + admission_workflow,
         re.MULTILINE,
     )
     # 6 checkout / 5 setup-python across smoke, pytest, pytest-linux-hermetic,
@@ -40,23 +54,27 @@ def test_actions_are_full_sha_pinned_with_version_annotations(repo_root):
 
 def test_workflow_permissions_and_checkout_credentials_are_minimal(repo_root):
     workflow = _workflow(repo_root)
+    admission_workflow = _admission_workflow(repo_root)
     assert re.search(r"^permissions:\n  contents: read$", workflow, re.MULTILINE)
+    assert re.search(
+        r"^permissions:\n  contents: read$", admission_workflow, re.MULTILINE
+    )
 
     smoke = _job(workflow, "smoke", "pytest")
-    pytest_job = _job(workflow, "pytest", "admission-gate")
-    admission = _job(workflow, "admission-gate", None)
+    pytest_job = _job(workflow, "pytest", "pytest-linux-hermetic")
+    admission = _job(admission_workflow, "admission-gate", None)
     for job in (smoke, pytest_job, admission):
         assert "persist-credentials: false" in job
         assert "contents: write" not in job
     # No job in this desktop-app harness writes to the repository from CI.
-    assert "contents: write" not in workflow
-    assert "persist-credentials: true" not in workflow
+    assert "contents: write" not in workflow + admission_workflow
+    assert "persist-credentials: true" not in workflow + admission_workflow
 
 
 def test_python_matrix_and_job_versions_are_explicit(repo_root):
     workflow = _workflow(repo_root)
     smoke = _job(workflow, "smoke", "pytest")
-    pytest_job = _job(workflow, "pytest", "admission-gate")
+    pytest_job = _job(workflow, "pytest", "pytest-linux-hermetic")
     assert "python-version: '3.13'" in smoke
     assert re.search(
         r"matrix:\n\s+python-version: \['3\.11', '3\.12', '3\.13'\]",
@@ -67,9 +85,10 @@ def test_python_matrix_and_job_versions_are_explicit(repo_root):
 
 def test_ci_installs_hash_locked_dependencies_only(repo_root):
     workflow = _workflow(repo_root)
+    admission_workflow = _admission_workflow(repo_root)
     smoke = _job(workflow, "smoke", "pytest")
-    pytest_job = _job(workflow, "pytest", "admission-gate")
-    admission = _job(workflow, "admission-gate", None)
+    pytest_job = _job(workflow, "pytest", "pytest-linux-hermetic")
+    admission = _job(admission_workflow, "admission-gate", None)
     for job in (smoke, pytest_job):
         assert "pip install --require-hashes -r requirements-dev.txt" in job
         assert "cache-dependency-path: requirements-dev.txt" in job
@@ -80,14 +99,18 @@ def test_ci_installs_hash_locked_dependencies_only(repo_root):
 
 def test_admission_uses_trusted_base_code_and_never_executes_candidate(repo_root):
     workflow = _workflow(repo_root)
-    admission = _job(workflow, "admission-gate", None)
+    admission_workflow = _admission_workflow(repo_root)
+    admission = _job(admission_workflow, "admission-gate", None)
 
-    assert "pull_request_target:" in workflow
+    assert "  pull_request_target:\n" in admission_workflow
+    assert "  pull_request:\n" not in admission_workflow
+    assert "  pull_request_target:\n" not in workflow
+    assert "  admission-gate:\n" not in workflow
     admission_names = re.findall(r"^    name: (.+)$", admission, re.MULTILINE)
     assert admission_names == [
-        "risk-aware admission (authority surfaces; ${{ github.event_name }})"
+        "risk-aware admission (authority surfaces; pull_request_target)"
     ]
-    assert "if: github.event_name == 'pull_request_target'" in admission
+    assert "if:" not in admission
     assert "path: trusted" in admission
     assert "path: candidate" in admission
     assert "test \"$(git -C candidate rev-parse HEAD)\" = \"$HEAD_SHA\"" in admission
@@ -96,20 +119,35 @@ def test_admission_uses_trusted_base_code_and_never_executes_candidate(repo_root
     assert "persist-credentials: true" not in admission
 
 
+def test_trusted_admission_context_exists_in_exactly_one_workflow(repo_root):
+    trusted_context = "risk-aware admission (authority surfaces; pull_request_target)"
+    occurrences = {
+        name: text.count(trusted_context)
+        for name, text in _all_workflows(repo_root).items()
+        if trusted_context in text
+    }
+
+    assert occurrences == {"admission.yml": 1}
+
+
 def test_pr_and_trusted_admission_runs_cannot_cancel_each_other(repo_root):
     workflow = _workflow(repo_root)
+    admission_workflow = _admission_workflow(repo_root)
 
     assert (
         "group: ${{ github.workflow }}-${{ github.event_name }}-"
         "${{ github.event.pull_request.number || github.ref }}"
     ) in workflow
+    assert (
+        "group: ${{ github.workflow }}-${{ github.event.pull_request.number }}"
+    ) in admission_workflow
 
 
 def test_pytest_job_runs_the_complete_declared_test_root(repo_root):
     """Integration contracts must not disappear behind a unit-only CI command."""
 
     workflow = _workflow(repo_root)
-    pytest_job = _job(workflow, "pytest", "admission-gate")
+    pytest_job = _job(workflow, "pytest", "pytest-linux-hermetic")
 
     assert "python -m pytest tests --tb=short -q" in pytest_job
     assert "python -m pytest tests/unit" not in pytest_job
