@@ -172,6 +172,7 @@ def test_pin_cannot_reopen_non_formal_legacy_routes(monkeypatch, repo_root: Path
 def test_retired_role_route_stops_at_the_app_member_cutover() -> None:
     check = admission.is_historical_retired_review_route
     cutoff = admission.FORMAL_REVIEW_APP_MEMBER_CUTOVER_COMMIT
+    assert cutoff == "d5197a97073413eb324e05a15724aa2f213d192d"
     ancestor = lambda candidate, _cutoff: candidate == "pre"
     assert check("verify-request", "author", "reviewer", cutoff, ancestor)
     assert check("verification-report", "reviewer", "all", "pre", ancestor)

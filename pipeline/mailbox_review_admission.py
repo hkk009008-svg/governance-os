@@ -21,7 +21,7 @@ _FROZEN_FORWARD_READER_REVIEW_ARTIFACTS = {
 # routes remain readable through this commit; later introductions must use app
 # members and the current route policy.
 FORMAL_REVIEW_APP_MEMBER_CUTOVER_COMMIT = (
-    "db9033027719291ae996680a8756d274f59b957c"
+    "d5197a97073413eb324e05a15724aa2f213d192d"
 )
 
 
