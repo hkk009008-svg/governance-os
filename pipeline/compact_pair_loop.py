@@ -24,14 +24,14 @@ SHA_RE = re.compile(r"[0-9a-f]{40}")
 REQUEST_RE = re.compile(
     r"coordination/mailbox/sent/"
     r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}-[0-9]{2}-[0-9]{2}Z-"
-    r"(?P<author>author|director2?|operator2?)-to-"
-    r"(?P<operator>reviewer|operator2?)-verify-request\.md"
+    r"(?P<author>codex|claude|agy|author|director2?|operator2?)-to-"
+    r"(?P<operator>codex|claude|reviewer|operator2?)-verify-request\.md"
 )
 REPORT_RE = re.compile(
     r"coordination/mailbox/sent/"
     r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}-[0-9]{2}-[0-9]{2}Z-"
-    r"(?P<reviewer>reviewer|operator2?)-to-"
-    r"(?P<recipient>author|director2?|operator2?|coordinator2?|all)-"
+    r"(?P<reviewer>codex|claude|agy|reviewer|operator2?)-to-"
+    r"(?P<recipient>codex|claude|agy|author|director2?|operator2?|coordinator2?|all)-"
     r"verification-report\.md"
 )
 MAX_EVENT_BYTES = 262_144
@@ -49,8 +49,8 @@ _FROZEN_MODEL_LABEL_EXCEPTION = {
 PAIR_SEATS = frozenset(protocol_mailbox.SEATS)
 OPERATOR_SEATS = frozenset({"operator", "operator2"})
 # Reader-only compatibility for current formal-review responsibility labels.
-_READ_PAIR_SEATS = PAIR_SEATS | {"author"}
-_READ_OPERATOR_SEATS = OPERATOR_SEATS | {"reviewer"}
+_READ_PAIR_SEATS = PAIR_SEATS | {"author", *protocol_mailbox.APP_MEMBERS}
+_READ_OPERATOR_SEATS = OPERATOR_SEATS | {"reviewer", *protocol_mailbox.FORMAL_REVIEWERS}
 MATERIAL_BEHAVIOR_RISK = codex_protocol_model.review_profile_for(
     "material-behavior"
 ).risk_class
@@ -507,9 +507,19 @@ def _parse_verify_request_bytes(
     match = REQUEST_RE.fullmatch(path)
     if match is None:
         raise CompactPairError("verify-request path is not canonical")
-    if (match.group("author") == "author") != (
-        match.group("operator") == "reviewer"
-    ):
+    filename_author = match.group("author")
+    filename_reviewer = match.group("operator")
+    app_route = (
+        filename_author in protocol_mailbox.APP_MEMBERS
+        or filename_reviewer in protocol_mailbox.APP_MEMBERS
+    )
+    if app_route:
+        problem = protocol_mailbox.formal_review_route_problem(
+            "verify-request", filename_author, filename_reviewer
+        )
+        if problem is not None:
+            raise CompactPairError(problem)
+    elif (filename_author == "author") != (filename_reviewer == "reviewer"):
         raise CompactPairError("verify-request cannot mix current and legacy roles")
     text = _decode(raw, "verify-request")
     lines = text.splitlines()
@@ -528,9 +538,9 @@ def _parse_verify_request_bytes(
     assigned = _one(lines, "Assigned operator: ", "Assigned operator")
     if author not in _READ_PAIR_SEATS or assigned not in _READ_OPERATOR_SEATS:
         raise CompactPairError("request author or assigned reviewer is not a pair seat")
-    if author != match.group("author") or _envelope_sender(text) != author:
+    if author != filename_author or _envelope_sender(text) != author:
         raise CompactPairError("Author seat does not match verify-request envelope/path")
-    if assigned != match.group("operator"):
+    if assigned != filename_reviewer:
         raise CompactPairError("Assigned operator does not match verify-request path")
     risk_class, risk_class_explicit = _risk_class(
         lines,
@@ -794,6 +804,12 @@ def validate_request_candidate(root: Path, request: VerifyRequest) -> list[str]:
             "Author model must resolve to a currently admitted author model "
             "for a new verify-request"
         ]
+    if request.author_seat in protocol_mailbox.APP_MEMBERS and not (
+        codex_protocol_model.model_family_matches_member(
+            request.author_model, request.author_seat
+        )
+    ):
+        return ["author model family does not match author member"]
     try:
         reviewed_root = _reviewed_root(root.resolve(), request.reviewed_repository)
         base = _full_commit(reviewed_root, request.reviewed_base, "Reviewed base")
@@ -965,9 +981,20 @@ def _parse_verification_report_bytes(
     match = REPORT_RE.fullmatch(path)
     if match is None:
         raise CompactPairError("verification-report path is not canonical Operator output")
-    if match.group("recipient") != "all" and (
-        (match.group("reviewer") == "reviewer")
-        != (match.group("recipient") == "author")
+    filename_reviewer = match.group("reviewer")
+    filename_recipient = match.group("recipient")
+    app_route = (
+        filename_reviewer in protocol_mailbox.APP_MEMBERS
+        or filename_recipient in protocol_mailbox.APP_MEMBERS
+    )
+    if app_route:
+        problem = protocol_mailbox.formal_review_route_problem(
+            "verification-report", filename_reviewer, filename_recipient
+        )
+        if problem is not None:
+            raise CompactPairError(problem)
+    elif filename_recipient != "all" and (
+        (filename_reviewer == "reviewer") != (filename_recipient == "author")
     ):
         raise CompactPairError("verification-report cannot mix current and legacy roles")
     text = _decode(raw, "verification-report")
@@ -1121,6 +1148,25 @@ def _report_structure_violations(
         violations.append("reviewer seat is not the assigned Operator")
     if report.reviewer_seat == request.author_seat:
         violations.append("reviewer seat equals author seat")
+    if request.author_seat in protocol_mailbox.APP_MEMBERS and not (
+        codex_protocol_model.model_family_matches_member(
+            request.author_model, request.author_seat
+        )
+    ):
+        violations.append("author model family does not match author member")
+    if report.reviewer_seat in protocol_mailbox.APP_MEMBERS and not (
+        codex_protocol_model.model_family_matches_member(
+            report.reviewer_model, report.reviewer_seat
+        )
+    ):
+        violations.append("reviewer model family does not match reviewer member")
+    report_match = REPORT_RE.fullmatch(report.path)
+    if (
+        report_match is not None
+        and report_match.group("recipient") != "all"
+        and report_match.group("recipient") != request.author_seat
+    ):
+        violations.append("report recipient does not match request author")
     profile = codex_protocol_model.review_profile_for(request.risk_class)
     if (
         report.risk_class_explicit
