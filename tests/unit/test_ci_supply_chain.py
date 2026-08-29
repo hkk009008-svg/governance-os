@@ -83,6 +83,10 @@ def test_admission_uses_trusted_base_code_and_never_executes_candidate(repo_root
     admission = _job(workflow, "admission-gate", None)
 
     assert "pull_request_target:" in workflow
+    admission_names = re.findall(r"^    name: (.+)$", admission, re.MULTILINE)
+    assert admission_names == [
+        "risk-aware admission (authority surfaces; ${{ github.event_name }})"
+    ]
     assert "if: github.event_name == 'pull_request_target'" in admission
     assert "path: trusted" in admission
     assert "path: candidate" in admission

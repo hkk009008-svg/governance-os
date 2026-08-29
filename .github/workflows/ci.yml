@@ -201,7 +201,10 @@ jobs:
   # surface are admitted without any new requirement. Stdlib-only: no pip
   # install. Reads no github.event.* data; the range comes from git itself.
   admission-gate:
-    name: risk-aware admission (authority surfaces)
+    # The event suffix is part of the required-check boundary. Without it,
+    # the skipped pull_request copy shares a context with the trusted
+    # pull_request_target result and can satisfy branch protection.
+    name: risk-aware admission (authority surfaces; ${{ github.event_name }})
     runs-on: macos-latest
     timeout-minutes: 10
     if: github.event_name == 'pull_request_target'
