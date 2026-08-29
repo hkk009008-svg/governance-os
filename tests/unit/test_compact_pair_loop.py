@@ -1658,7 +1658,7 @@ def test_recommitted_identical_verbose_request_loses_legacy_compatibility(
 
 COMPOSED_PATH = (
     "coordination/mailbox/sent/"
-    "2026-07-26T08-00-00Z-author-to-reviewer-verify-request.md"
+    "2026-07-26T08-00-00Z-codex-to-claude-verify-request.md"
 )
 
 
@@ -1686,8 +1686,8 @@ def _publish_as_send_event(root: Path, body: str) -> Path:
     """Wrap a composed body exactly as `coordination/bin/send-event` does."""
     candidate = root / "candidate.tmp"
     candidate.write_text(
-        "# Author → Reviewer: composed request\n\n"
-        "**When:** 2026-07-26T08:00:00Z · **From:** author (online)\n\n"
+        "# Codex → Claude: composed request\n\n"
+        "**When:** 2026-07-26T08:00:00Z · **From:** codex (online)\n\n"
         f"{body}\n\nCursor at send: cursorless\n",
         encoding="utf-8",
     )
@@ -1733,9 +1733,9 @@ def test_composed_request_round_trips_through_the_candidate_parser(
     head = _git(root, "rev-parse", "HEAD")
     body = pair.compose_request(
         root,
-        author_seat="author",
+        author_seat="codex",
         author_model="gpt-5.6-sol",
-        assigned_operator="reviewer",
+        assigned_operator="claude",
         risk_class="high-risk-control",
         base_rev="HEAD~1",
         head_rev="HEAD",
@@ -1753,9 +1753,9 @@ def test_composed_request_round_trips_through_the_candidate_parser(
 
     assert request.reviewed_base == base
     assert request.reviewed_head == head
-    assert request.author_seat == "author"
+    assert request.author_seat == "codex"
     assert request.author_model == "gpt-5.6-sol"
-    assert request.assigned_operator == "reviewer"
+    assert request.assigned_operator == "claude"
     assert request.risk_class == "high-risk-control"
     assert request.risk_class_explicit is True
     assert request.outcome == "Composed outcome under test."
@@ -1773,9 +1773,9 @@ def test_compose_resolves_revisions_so_authors_never_transcribe_shas(
     root, base, head = _compose_repo(tmp_path)
     body = pair.compose_request(
         root,
-        author_seat="author",
+        author_seat="codex",
         author_model="gpt-5.6-sol",
-        assigned_operator="reviewer",
+        assigned_operator="claude",
         risk_class="material-behavior",
         base_rev="HEAD~1",
         head_rev="HEAD",
@@ -1789,29 +1789,27 @@ def test_compose_resolves_revisions_so_authors_never_transcribe_shas(
     assert "## Finding Refs" not in body
 
 
-def test_new_request_requires_an_explicitly_current_author_model(
+def test_new_request_requires_a_current_member_model(
     tmp_path: Path,
 ) -> None:
     root, _, _ = _compose_repo(tmp_path)
-    with pytest.raises(pair.CompactPairError, match="currently admitted author model"):
+    with pytest.raises(pair.CompactPairError, match="author model family"):
         pair.compose_request(
             root,
-            author_seat="author",
-            # Registered in [families] but deliberately not in active_author_models,
-            # so the control still exercises a real refusal.
-            author_model="claude-opus-5-thinking-high",
-            assigned_operator="reviewer",
+            author_seat="codex",
+            author_model="claude-opus-4-7",
+            assigned_operator="claude",
             risk_class="material-behavior",
             base_rev="HEAD~1",
             head_rev="HEAD",
-            outcome="A retired model label cannot publish new authority.",
+            outcome="A member cannot borrow another member's model family.",
         )
 
     body = pair.compose_request(
         root,
-        author_seat="author",
+        author_seat="agy",
         author_model="Gemini 3.7 Flash (High)",
-        assigned_operator="reviewer",
+        assigned_operator="claude",
         risk_class="material-behavior",
         base_rev="HEAD~1",
         head_rev="HEAD",
@@ -1828,9 +1826,9 @@ def test_compose_refuses_risk_classes_that_carry_no_formal_review(
     with pytest.raises(pair.CompactPairError, match="Risk class must be"):
         pair.compose_request(
             root,
-            author_seat="author",
+            author_seat="codex",
             author_model="gpt-5.6-sol",
-            assigned_operator="reviewer",
+            assigned_operator="claude",
             risk_class=risk_class,
             base_rev="HEAD~1",
             head_rev="HEAD",
@@ -1841,8 +1839,8 @@ def test_compose_refuses_risk_classes_that_carry_no_formal_review(
 @pytest.mark.parametrize(
     ("author", "operator", "expected"),
     (
-        ("coordinator", "reviewer", "Author seat must be"),
-        ("author", "operator2", "Assigned operator must be"),
+        ("coordinator", "claude", "author must be"),
+        ("codex", "operator2", "reviewer must be"),
     ),
 )
 def test_compose_refuses_seats_outside_the_pair(
@@ -1869,9 +1867,9 @@ def test_compose_refuses_high_risk_without_an_abuse_assessment(
     with pytest.raises(pair.CompactPairError, match="Abuse Class Assessment"):
         pair.compose_request(
             root,
-            author_seat="author",
+            author_seat="codex",
             author_model="gpt-5.6-sol",
-            assigned_operator="reviewer",
+            assigned_operator="claude",
             risk_class="high-risk-control",
             base_rev="HEAD~1",
             head_rev="HEAD",
@@ -1900,9 +1898,9 @@ def test_compose_rejects_malformed_inputs_before_emitting_anything(
     """
     root, _, _ = _compose_repo(tmp_path)
     arguments: dict[str, object] = {
-        "author_seat": "author",
+        "author_seat": "codex",
         "author_model": "gpt-5.6-sol",
-        "assigned_operator": "reviewer",
+        "assigned_operator": "claude",
         "risk_class": "material-behavior",
         "base_rev": "HEAD~1",
         "head_rev": "HEAD",
@@ -1933,9 +1931,9 @@ def test_compose_refuses_a_finding_ref_whose_object_does_not_exist(
     )
     real_commit = _commit_an_event(root, relative)
     arguments: dict[str, object] = {
-        "author_seat": "author",
+        "author_seat": "codex",
         "author_model": "gpt-5.6-sol",
-        "assigned_operator": "reviewer",
+        "assigned_operator": "claude",
         "risk_class": "material-behavior",
         "base_rev": "HEAD~1",
         "head_rev": "HEAD",
@@ -1975,9 +1973,9 @@ def test_compose_still_accepts_a_digest_reference_it_cannot_verify(
 
     body = pair.compose_request(
         root,
-        author_seat="author",
+        author_seat="codex",
         author_model="gpt-5.6-sol",
-        assigned_operator="reviewer",
+        assigned_operator="claude",
         risk_class="material-behavior",
         base_rev="HEAD~1",
         head_rev="HEAD",
@@ -2099,12 +2097,12 @@ def test_compose_refuses_any_identity_outside_live_author_reviewer(
 ) -> None:
     """The composer must not emit a route the current writer cannot publish."""
     root, _, _ = _compose_repo(tmp_path)
-    with pytest.raises(pair.CompactPairError, match="Author seat"):
+    with pytest.raises(pair.CompactPairError, match="author must be"):
         pair.compose_request(
             root,
             author_seat="operator",
             author_model="gpt-5.6-sol",
-            assigned_operator="reviewer",
+            assigned_operator="claude",
             risk_class="material-behavior",
             base_rev="HEAD~1",
             head_rev="HEAD",
@@ -2112,7 +2110,7 @@ def test_compose_refuses_any_identity_outside_live_author_reviewer(
         )
 
     writer = (repo_root / "coordination/bin/send-event").read_text(encoding="utf-8")
-    assert "refusing self-addressed event" in writer
+    assert "Python finalizer owns" in writer
 
 
 def test_compose_refuses_a_range_assembled_from_two_repository_states(
@@ -2142,9 +2140,9 @@ def test_compose_refuses_a_range_assembled_from_two_repository_states(
     with pytest.raises(pair.CompactPairError, match="moved while composing"):
         pair.compose_request(
             root,
-            author_seat="author",
+            author_seat="codex",
             author_model="gpt-5.6-sol",
-            assigned_operator="reviewer",
+            assigned_operator="claude",
             risk_class="material-behavior",
             base_rev="HEAD~1",
             head_rev="HEAD",
@@ -2156,9 +2154,9 @@ def test_compose_refuses_a_range_assembled_from_two_repository_states(
     monkeypatch.setattr(pair, "_resolve_rev", real)
     body = pair.compose_request(
         root,
-        author_seat="author",
+        author_seat="codex",
         author_model="gpt-5.6-sol",
-        assigned_operator="reviewer",
+        assigned_operator="claude",
         risk_class="material-behavior",
         base_rev=base,
         head_rev=head,
@@ -2227,6 +2225,11 @@ def _remediation_fixture(
         request_path=initial_request_path,
         verdict=target_verdict,
         reviewer_seat=assigned_operator,
+        reviewer_model=(
+            "claude-opus-4-7"
+            if assigned_operator == "claude"
+            else "gpt-5.6-terra"
+        ),
         finding_refs=(finding_ref,),
         dispositions=(
             (
@@ -2307,15 +2310,15 @@ def test_compose_cli_carries_exact_failed_remediation_binding(
 ) -> None:
     root, base, head, _trigger, failed_ref, finding_ref = _remediation_fixture(
         tmp_path,
-        author_seat="author",
-        assigned_operator="reviewer",
+        author_seat="codex",
+        assigned_operator="claude",
         initial_request_path=(
             "coordination/mailbox/sent/"
-            "2026-07-18T08-00-00Z-author-to-reviewer-verify-request.md"
+            "2026-07-18T08-00-00Z-codex-to-claude-verify-request.md"
         ),
         initial_report_path=(
             "coordination/mailbox/sent/"
-            "2026-07-18T08-10-00Z-reviewer-to-all-verification-report.md"
+            "2026-07-18T08-10-00Z-claude-to-all-verification-report.md"
         ),
     )
     monkeypatch.setattr(pair.sys, "stdin", io.StringIO("Review the repair."))
@@ -2326,11 +2329,11 @@ def test_compose_cli_carries_exact_failed_remediation_binding(
             "--repo-root",
             str(root),
             "--author",
-            "author",
+            "codex",
             "--author-model",
             "gpt-5.6-sol",
             "--operator",
-            "reviewer",
+            "claude",
             "--risk-class",
             "material-behavior",
             "--base",

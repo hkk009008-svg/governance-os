@@ -108,8 +108,12 @@ def _live_review_state(review_state: object, projection: object) -> object:
         if classification != "live":
             continue
         identity = _review_event_identity(request.path)
-        if identity == ("author", "reviewer", "verify-request") and (
-            request.assigned_operator == "reviewer"
+        if (
+            identity is not None
+            and protocol_mailbox.formal_review_route_problem(
+                identity[2], identity[0], identity[1]
+            ) is None
+            and request.assigned_operator == identity[1]
         ):
             pending.append(request)
 
@@ -131,12 +135,17 @@ def _live_review_state(review_state: object, projection: object) -> object:
         request_identity = _review_event_identity(item.request_path)
         report_identity = _review_event_identity(item.report_path)
         if (
-            request_identity == ("author", "reviewer", "verify-request")
-            and report_identity in {
-                ("reviewer", "author", "verification-report"),
-                ("reviewer", "all", "verification-report"),
-            }
-            and item.assigned_operator == "reviewer"
+            request_identity is not None
+            and report_identity is not None
+            and protocol_mailbox.formal_review_route_problem(
+                request_identity[2], request_identity[0], request_identity[1]
+            ) is None
+            and protocol_mailbox.formal_review_route_problem(
+                report_identity[2], report_identity[0], report_identity[1]
+            ) is None
+            and item.assigned_operator == request_identity[1]
+            and report_identity[0] == request_identity[1]
+            and report_identity[1] in {request_identity[0], "all"}
         ):
             failed.append(item)
 

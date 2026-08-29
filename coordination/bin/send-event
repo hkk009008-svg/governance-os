@@ -68,8 +68,6 @@ case "$TO" in
     exit 2
     ;;
 esac
-[ "$FROM" != "$TO" ] || { echo "send-event: refusing self-addressed event" >&2; exit 2; }
-
 ROOT=$(git_clean rev-parse --show-toplevel)
 COMMON=$(git_clean -C "$ROOT" rev-parse --path-format=absolute --git-common-dir)
 PRIMARY_ROOT=$(/usr/bin/dirname "$COMMON")
@@ -101,52 +99,8 @@ if ! /usr/bin/grep -Fxq -- "$KIND" "$KIND_FILE"; then
   exit 2
 fi
 
-case "$KIND" in
-  verify-request|verification-report)
-    # Formal review identity gate.
-    case "$FROM" in
-      author|reviewer) ;;
-      *)
-        echo "send-event: $KIND requires an author/reviewer sender" >&2
-        exit 2
-        ;;
-    esac
-    case "$TO" in
-      author|reviewer|all) ;;
-      *)
-        echo "send-event: $KIND requires an author/reviewer/all recipient" >&2
-        exit 2
-        ;;
-    esac
-    ;;
-  findings|learning-candidate|decision)
-    # Desktop durable-record identity gate.
-    case "$FROM" in
-      codex|claude|agy) ;;
-      *)
-        echo "send-event: $KIND requires a codex/claude/agy sender" >&2
-        exit 2
-        ;;
-    esac
-    case "$TO" in
-      codex|claude|agy|all) ;;
-      *)
-        echo "send-event: $KIND requires a codex/claude/agy/all recipient" >&2
-        exit 2
-        ;;
-    esac
-    ;;
-esac
-
-if [ "$KIND" = "verification-report" ]; then
-  case "$FROM" in
-    reviewer) ;;
-    *)
-      echo "send-event: only the reviewer may publish verification-report" >&2
-      exit 2
-      ;;
-  esac
-fi
+# Identity and kind checks above are lexical. The Python finalizer owns the
+# capability route and typed-payload policy for every durable write.
 # The mailbox filename is the protocol identity and is parsed by one canonical
 # grammar everywhere; it carries no uniqueness suffix. Two events with the same
 # (from, to, kind) in the same UTC second would collide on the same path and

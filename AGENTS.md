@@ -96,9 +96,14 @@ temporary responsibilities for that exact range:
 needs non-author review of the exact committed range. Authority, security,
 executable composition, side-effect gates, and trust-granting schemas also
 need different-model-family review and explicit abuse-class analysis. AGY may
-challenge and supply evidence throughout, but cannot be the sole formal
-reviewer or accepting verdict. Remove the temporary responsibilities when the
-review ends.
+challenge and supply evidence throughout, but never publishes the formal
+GO/NITS/FAIL verdict. Native AGY may own implementation and publish its
+verify-request to Codex or Claude. Remove the temporary responsibilities when
+the review ends.
+
+The native AGY desktop member and the parent-owned `codex-agy` helper are
+different capabilities. The helper is advisory only: it cannot claim the
+`agy` identity, write mailbox artifacts, or acquire repository authority.
 
 ## Authority and durable state
 
@@ -136,5 +141,5 @@ bin/pipeline check
 adapter handshakes. It does not launch a provider, send a team message, spend,
 or grant authority. Each verb's `--help` is the source for its arguments.
 
-Provider adapters: `docs/protocol/codex/continuation.md` and `docs/protocol/claude/continuation.md`.
+Provider adapters: `docs/protocol/codex/continuation.md`, `docs/protocol/claude/continuation.md`, and `docs/protocol/agy/continuation.md`.
 Resolve targets with `bin/pipeline target`, then follow their own instructions.

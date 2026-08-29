@@ -125,20 +125,20 @@ def _prepare_verify_request(
     )
     request_path = (
         "coordination/mailbox/sent/"
-        "2026-07-17T08-00-00Z-author-to-reviewer-verify-request.md"
+        "2026-07-17T08-00-00Z-codex-to-claude-verify-request.md"
     )
     (repo / request_path).write_text(
         f"""\
-# Author → Reviewer: verify compact pair candidate
+# Codex → Claude: verify compact pair candidate
 
-**When:** 2026-07-17T08:00:00Z · **From:** author (online)
+**When:** 2026-07-17T08:00:00Z · **From:** codex (online)
 
 Event type: verify-request
 {repository_line}Reviewed head: {head}
 Reviewed base: {base}
-Author seat: author
+Author seat: codex
 Author model: gpt-5.6-sol
-Assigned operator: reviewer
+Assigned operator: claude
 Risk class: material-behavior
 
 ## Outcome
@@ -154,7 +154,7 @@ Cursor at send: 0
         encoding="utf-8",
     )
     _git(repo, "add", request_path)
-    _git(repo, "commit", "-q", "-m", "coord(author): request verification")
+    _git(repo, "commit", "-q", "-m", "coord(codex): request verification")
     return base, head, request_path, _git(repo, "rev-parse", "HEAD")
 
 
@@ -166,7 +166,7 @@ def _report_body(
     *,
     verdict: str,
     finding_ref: str,
-    reviewer_seat: str = "reviewer",
+    reviewer_seat: str = "claude",
     reviewed_repository: str | None = None,
 ) -> str:
     evidence = ""
@@ -190,7 +190,7 @@ Verification request: {request_path}@{trigger}
 {repository_line}Reviewed head: {head}
 Reviewed base: {base}
 Reviewer seat: {reviewer_seat}
-Reviewer model: gpt-5.6-terra
+Reviewer model: {"claude-opus-4-6-thinking" if reviewer_seat == "claude" else "gpt-5.6-terra"}
 Risk class: material-behavior
 
 ## Finding Refs
@@ -213,8 +213,8 @@ def _request_body(
     head: str,
     *,
     finding_ref: str,
-    author: str = "author",
-    assigned: str = "reviewer",
+    author: str = "codex",
+    assigned: str = "claude",
 ) -> str:
     return f"""\
 Event type: verify-request
@@ -295,8 +295,8 @@ def test_valid_verify_request_is_validated_before_finalization(
     result = _run(
         [
             repo_root / "coordination/bin/send-event",
-            "author",
-            "reviewer",
+            "codex",
+            "claude",
             "verify-request",
             "validate candidate",
         ],
@@ -306,7 +306,7 @@ def test_valid_verify_request_is_validated_before_finalization(
 
     assert result.returncode == 0, result.stderr
     staged = _git(repo, "diff", "--cached", "--name-only")
-    assert staged.endswith("-author-to-reviewer-verify-request.md")
+    assert staged.endswith("-codex-to-claude-verify-request.md")
     source = (repo_root / "coordination/bin/send-event").read_text(encoding="utf-8")
     assert source.index("validate-candidate") < source.index("send-event-finalize")
 
@@ -322,8 +322,8 @@ def test_verify_request_without_formal_risk_class_fails_before_finalization(
     result = _run(
         [
             repo_root / "coordination/bin/send-event",
-            "author",
-            "reviewer",
+            "codex",
+            "claude",
             "verify-request",
             "missing risk class",
         ],
@@ -409,7 +409,7 @@ def test_valid_verification_report_uses_same_fixed_finalizer_as_ordinary_events(
     result = _run(
         [
             repo_root / "coordination/bin/send-event",
-            "reviewer",
+            "claude",
             "all",
             "verification-report",
             subject,
@@ -427,7 +427,7 @@ def test_valid_verification_report_uses_same_fixed_finalizer_as_ordinary_events(
 
     assert result.returncode == 0, result.stderr
     staged = _git(repo, "diff", "--cached", "--name-only")
-    assert staged.endswith("-reviewer-to-all-verification-report.md")
+    assert staged.endswith("-claude-to-all-verification-report.md")
     source = (repo_root / "coordination/bin/send-event").read_text(encoding="utf-8")
     assert source.count("send-event-finalize") == 1
     assert "verification_report_gate" not in source
@@ -444,15 +444,15 @@ def test_fixed_finalizer_revalidates_report_changed_after_prevalidation(
     base, head, request_path, trigger = _prepare_verify_request(repo)
     relative = (
         "coordination/mailbox/sent/"
-        "2026-07-17T08-10-00Z-reviewer-to-all-verification-report.md"
+        "2026-07-17T08-10-00Z-claude-to-all-verification-report.md"
     )
     candidate = repo / (
         "coordination/mailbox/sent/"
-        ".2026-07-17T08-10-00Z-reviewer-to-all-verification-report.race.tmp"
+        ".2026-07-17T08-10-00Z-claude-to-all-verification-report.race.tmp"
     )
     valid = (
-        "# Reviewer → All: prevalidated report\n\n"
-        "**When:** 2026-07-17T08:10:00Z · **From:** reviewer (online)\n\n"
+        "# Claude → All: prevalidated report\n\n"
+        "**When:** 2026-07-17T08:10:00Z · **From:** claude (online)\n\n"
         + _report_body(
             base,
             head,
@@ -512,7 +512,7 @@ def test_cross_repository_verification_report_uses_fixed_finalizer(
     result = _run(
         [
             repo_root / "coordination/bin/send-event",
-            "reviewer",
+            "claude",
             "all",
             "verification-report",
             f"truthful GO target commit `{head}`",
@@ -531,62 +531,36 @@ def test_cross_repository_verification_report_uses_fixed_finalizer(
 
     assert result.returncode == 0, result.stderr
     staged = _git(repo, "diff", "--cached", "--name-only")
-    assert staged.endswith("-reviewer-to-all-verification-report.md")
+    assert staged.endswith("-claude-to-all-verification-report.md")
 
 
-def test_misassignment_is_still_refused_where_it_can_still_be_expressed(
+def test_report_recipient_must_match_the_request_author(
     tmp_path: Path, repo_root: Path
 ) -> None:
-    """The reviewer/assignment binding, tested where it discriminates.
-
-    A previous version of this test marked the invariant VACUOUS and pinned it
-    as a strict xfail. The reviewer was right that the pin was wrong: it set
-    `reviewer` on BOTH sides, so it constructed no misassignment at all and
-    went red under --runxfail only because a VALID report succeeded. A pin that
-    passes for the opposite of its stated reason is worse than no pin.
-
-    The invariant is not vacuous, either -- it is vacuous only for NEW events,
-    where one reviewer name makes the comparison true by construction. It still
-    binds the 211 committed reports that carry six identities, and that is
-    where it is exercised here: an operator2 report answering a request
-    assigned to operator, validated directly rather than through the wrapper
-    (the wrapper now refuses retired senders one step earlier).
-
-    For new events the surviving discriminators are the reviewer's model family
-    and the side observed in a peer receipt. Carrying the side in the identity
-    (reviewer@codex vs reviewer@claude) would restore seat-level
-    expressiveness; that is a grammar change with its own review and is
-    deliberately not smuggled in here.
-    """
-
     repo = tmp_path / "repo"
     repo.mkdir()
     _init_repo(repo, repo_root)
     base, head, request_path, trigger = _prepare_verify_request(repo)
-
     body = _report_body(
         base, head, request_path, trigger,
         verdict="FAIL",
         finding_ref=_finding_ref(repo),
-        reviewer_seat="operator2",
     )
     relative = (
         "coordination/mailbox/sent/"
-        "2026-07-17T09-00-00Z-operator2-to-all-verification-report.md"
+        "2026-07-17T09-00-00Z-claude-to-agy-verification-report.md"
     )
     raw = (
-        "# Operator2 → All: misassigned report\n\n"
-        "**When:** 2026-07-17T09:00:00Z · **From:** operator2 (online)\n\n"
+        "# Claude → AGY: misaddressed report\n\n"
+        "**When:** 2026-07-17T09:00:00Z · **From:** claude (online)\n\n"
         + body
-        + "\nCursor at send: 0\n"
+        + "\nCursor at send: cursorless\n"
     )
-
     report = compact_pair_loop._parse_verification_report_bytes(
         repo, relative, raw.encode("utf-8")
     )
     violations = compact_pair_loop.validate_report(repo, report)
-
-    assert any("assigned Operator" in violation for violation in violations), violations
+    assert "report recipient does not match request author" in violations
 
 def test_go_with_bare_evidence_markers_fails_before_staging(
     tmp_path: Path, repo_root: Path
@@ -611,7 +585,7 @@ def test_go_with_bare_evidence_markers_fails_before_staging(
     result = _run(
         [
             repo_root / "coordination/bin/send-event",
-            "reviewer",
+            "claude",
             "all",
             "verification-report",
             f"bare evidence commit `{head}`",
@@ -625,17 +599,11 @@ def test_go_with_bare_evidence_markers_fails_before_staging(
     assert _git(repo, "diff", "--cached", "--name-only") == ""
 
 
-@pytest.mark.parametrize("sender", ("author", "director", "director2", "coordinator"))
-def test_only_the_reviewer_may_publish_a_verification_report(
+@pytest.mark.parametrize("sender", ("agy", "author", "director", "director2", "coordinator"))
+def test_only_codex_or_claude_may_publish_a_verification_report(
     tmp_path: Path, repo_root: Path, sender: str
 ) -> None:
-    """Two refusals, one property: nobody but the reviewer publishes a verdict.
-
-    `author` is refused for the reason that survived the collapse -- it is the
-    other position in the pair. The three retired seat names are refused one
-    step earlier, as senders that no longer exist, which is strictly stronger
-    than the per-kind rule they used to trip.
-    """
+    """AGY and every retired identity are refused on the report path."""
 
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -653,11 +621,13 @@ def test_only_the_reviewer_may_publish_a_verification_report(
         input_text="VERDICT: GO\n",
     )
 
-    assert result.returncode == 2
+    assert result.returncode != 0
     expected = (
-        "only the reviewer may publish verification-report"
-        if sender == "author"
-        else "bad <from>"
+        "publisher must be codex or claude"
+        if sender == "agy"
+        else (
+            "path is not canonical" if sender == "author" else "bad <from>"
+        )
     )
     assert expected in result.stderr
     assert not list((repo / "coordination/mailbox/sent").glob("*verification-report.md"))
@@ -676,7 +646,7 @@ def test_send_event_keeps_final_event_but_fails_when_index_is_locked(
     lock.write_text("locked\n", encoding="utf-8")
     try:
         result = _run(
-            [repo_root / "coordination/bin/send-event", "reviewer", "all", "verification-report", "blocked index"],
+            [repo_root / "coordination/bin/send-event", "claude", "all", "verification-report", "blocked index"],
             repo,
             input_text=_report_body(
                 base,

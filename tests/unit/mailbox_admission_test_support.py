@@ -28,7 +28,7 @@ APP_FORMAL = (
 )
 ORPHAN_REPORT = (
     "coordination/mailbox/sent/"
-    "2026-09-08T00-00-00Z-reviewer-to-author-verification-report.md"
+    "2026-09-08T00-00-00Z-claude-to-codex-verification-report.md"
 )
 
 

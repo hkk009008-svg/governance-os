@@ -33,20 +33,20 @@ def test_unknown_author_model_is_invalid_in_state_and_status(
     head = _git(clone, "rev-parse", "HEAD")
     path = (
         "coordination/mailbox/sent/"
-        "2026-12-31T23-59-00Z-author-to-reviewer-verify-request.md"
+        "2026-12-31T23-59-00Z-codex-to-claude-verify-request.md"
     )
     (clone / path).write_text(
         f"""\
-# Author → Reviewer: current model admission control
+# Codex → Claude: current model admission control
 
-**When:** 2026-12-31T23:59:00Z · **From:** author (online)
+**When:** 2026-12-31T23:59:00Z · **From:** codex (online)
 
 Event type: verify-request
 Reviewed base: {base}
 Reviewed head: {head}
-Author seat: author
+Author seat: codex
 Author model: retired-unknown-model
-Assigned operator: reviewer
+Assigned operator: claude
 Risk class: material-behavior
 
 ## Outcome
@@ -91,21 +91,21 @@ def test_cross_repository_request_and_report_use_target_git_objects(
     clone = _clone(repo_root, tmp_path, "cross-repository-harness")
     request_path = (
         "coordination/mailbox/sent/"
-        "2026-12-31T23-58-00Z-author-to-reviewer-verify-request.md"
+        "2026-12-31T23-58-00Z-codex-to-claude-verify-request.md"
     )
     (clone / request_path).write_text(
         f"""\
-# Author → Reviewer: cross-repository request
+# Codex → Claude: cross-repository request
 
-**When:** 2026-12-31T23:58:00Z · **From:** author (online)
+**When:** 2026-12-31T23:58:00Z · **From:** codex (online)
 
 Event type: verify-request
 Reviewed repository: {target}
 Reviewed base: {base}
 Reviewed head: {head}
-Author seat: author
+Author seat: codex
 Author model: gpt-5.6-sol
-Assigned operator: reviewer
+Assigned operator: claude
 Risk class: material-behavior
 
 ## Outcome
@@ -126,13 +126,13 @@ Cursor at send: cursorless
 
     report_path = (
         "coordination/mailbox/sent/"
-        "2026-12-31T23-59-00Z-reviewer-to-author-verification-report.md"
+        "2026-12-31T23-59-00Z-claude-to-codex-verification-report.md"
     )
     (clone / report_path).write_text(
         f"""\
-# Reviewer → Author: cross-repository report
+# Claude → Codex: cross-repository report
 
-**When:** 2026-12-31T23:59:00Z · **From:** reviewer (online)
+**When:** 2026-12-31T23:59:00Z · **From:** claude (online)
 
 Event type: verification-report
 VERDICT: NITS
@@ -140,7 +140,7 @@ Verification request: {request_path}@{request_commit}
 Reviewed repository: {target}
 Reviewed head: {head}
 Reviewed base: {base}
-Reviewer seat: reviewer
+Reviewer seat: claude
 Reviewer model: claude-opus-4-6-thinking
 Risk class: material-behavior
 

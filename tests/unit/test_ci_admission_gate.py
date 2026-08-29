@@ -20,11 +20,11 @@ from mailbox_admission_test_support import event
 
 REQUEST_PATH = (
     "coordination/mailbox/sent/"
-    "2026-08-07T12-00-00Z-author-to-reviewer-verify-request.md"
+    "2026-08-07T12-00-00Z-codex-to-claude-verify-request.md"
 )
 REPORT_PATH = (
     "coordination/mailbox/sent/"
-    "2026-08-07T12-10-00Z-reviewer-to-author-verification-report.md"
+    "2026-08-07T12-10-00Z-claude-to-codex-verification-report.md"
 )
 EVIDENCE_PATH = (
     "coordination/mailbox/sent/"
@@ -130,16 +130,16 @@ def _request_text(
         )
     )
     return f"""\
-# Author → Reviewer: verify outcome
+# Codex → Claude: verify outcome
 
-**When:** 2026-08-07T12:00:00Z · **From:** author (online)
+**When:** 2026-08-07T12:00:00Z · **From:** codex (online)
 
 Event type: verify-request
 Reviewed head: {head}
 Reviewed base: {base}
-Author seat: author
+Author seat: codex
 Author model: gpt-5.6-sol
-Assigned operator: reviewer
+Assigned operator: claude
 Risk class: {risk_class}
 
 ## Outcome
@@ -170,16 +170,16 @@ def _report_text(
     )
     dispositions = tuple(f"{ref}: {disposition}" for ref in finding_refs)
     return f"""\
-# Reviewer → Author: outcome verification
+# Claude → Codex: outcome verification
 
-**When:** 2026-08-07T12:10:00Z · **From:** reviewer (online)
+**When:** 2026-08-07T12:10:00Z · **From:** claude (online)
 
 Event type: verification-report
 VERDICT: {verdict}
 Verification request: {REQUEST_PATH}@{trigger}
 Reviewed head: {head}
 Reviewed base: {base}
-Reviewer seat: reviewer
+Reviewer seat: claude
 Reviewer model: {reviewer_model}
 Risk class: {risk_class}
 {abuse_binding}
@@ -324,7 +324,7 @@ def test_gate_wires_the_exact_frozen_forward_reader_route(
         "_is_exact_frozen_forward_reader_route",
         lambda *_args: False,
     )
-    with pytest.raises(gate.pair.CompactPairError, match="formal review role route"):
+    with pytest.raises(gate.pair.CompactPairError, match="publisher must be"):
         gate._validate_current_envelope(
             repo_root, raw, path, protocol_mailbox.KNOWN_KINDS, commit
         )
@@ -579,16 +579,16 @@ def test_new_retired_role_report_cannot_admit_a_range(tmp_path: Path) -> None:
         root, "pipeline/mailbox_writer.py", "POLICY = 1\n", "feat: writer policy"
     )
     refs = (_mint_evidence(root),)
-    legacy_request = REQUEST_PATH.replace("author-to-reviewer", "director-to-operator")
-    legacy_report = REPORT_PATH.replace("reviewer-to-author", "operator-to-director")
+    legacy_request = REQUEST_PATH.replace("codex-to-claude", "director-to-operator")
+    legacy_report = REPORT_PATH.replace("claude-to-codex", "operator-to-director")
     request_text = (
         _request_text(
             base, reviewed_head, risk_class="high-risk-control", finding_refs=refs
         )
-        .replace("# Author → Reviewer", "# Director → Operator")
-        .replace("**From:** author", "**From:** director")
-        .replace("Author seat: author", "Author seat: director")
-        .replace("Assigned operator: reviewer", "Assigned operator: operator")
+        .replace("# Codex → Claude", "# Director → Operator")
+        .replace("**From:** codex", "**From:** director")
+        .replace("Author seat: codex", "Author seat: director")
+        .replace("Assigned operator: claude", "Assigned operator: operator")
         .replace("Cursor at send: cursorless", "Cursor at send: 0")
     )
     _commit_file(root, legacy_request, request_text, "review: legacy request")
@@ -603,10 +603,10 @@ def test_new_retired_role_report_cannot_admit_a_range(tmp_path: Path) -> None:
             reviewer_model="claude-opus-4-6-thinking",
             finding_refs=refs,
         )
-        .replace("# Reviewer → Author", "# Operator → Director")
-        .replace("**From:** reviewer", "**From:** operator")
+        .replace("# Claude → Codex", "# Operator → Director")
+        .replace("**From:** claude", "**From:** operator")
         .replace(f"Verification request: {REQUEST_PATH}@", f"Verification request: {legacy_request}@")
-        .replace("Reviewer seat: reviewer", "Reviewer seat: operator")
+        .replace("Reviewer seat: claude", "Reviewer seat: operator")
         .replace("Cursor at send: cursorless", "Cursor at send: 0")
     )
     _commit_file(root, legacy_report, report_text, "review: legacy report")
@@ -616,7 +616,7 @@ def test_new_retired_role_report_cannot_admit_a_range(tmp_path: Path) -> None:
 
     assert not outcome.admitted
     assert any(
-        "formal review role route" in reason
+        "publisher must be codex or claude" in reason
         for _, reason in outcome.skipped_reports
     )
 
@@ -629,15 +629,15 @@ def test_legacy_request_and_current_report_cannot_cross_generations(
         root, "pipeline/mailbox_writer.py", "POLICY = 1\n", "feat: writer policy"
     )
     refs = (_mint_evidence(root),)
-    legacy_request = REQUEST_PATH.replace("author-to-reviewer", "director-to-operator")
+    legacy_request = REQUEST_PATH.replace("codex-to-claude", "director-to-operator")
     request_text = (
         _request_text(
             base, reviewed_head, risk_class="high-risk-control", finding_refs=refs
         )
-        .replace("# Author → Reviewer", "# Director → Operator")
-        .replace("**From:** author", "**From:** director")
-        .replace("Author seat: author", "Author seat: director")
-        .replace("Assigned operator: reviewer", "Assigned operator: operator")
+        .replace("# Codex → Claude", "# Director → Operator")
+        .replace("**From:** codex", "**From:** director")
+        .replace("Author seat: codex", "Author seat: director")
+        .replace("Assigned operator: claude", "Assigned operator: operator")
         .replace("Cursor at send: cursorless", "Cursor at send: 0")
     )
     _commit_file(root, legacy_request, request_text, "review: legacy request")
@@ -703,7 +703,7 @@ def test_material_behavior_report_does_not_admit_authority_surface(
         base,
         reviewed_head,
         risk_class="material-behavior",
-        reviewer_model="gpt-5.6-terra",
+        reviewer_model="claude-opus-4-6-thinking",
     )
     head = _git(root, "rev-parse", "HEAD")
 
@@ -716,7 +716,7 @@ def test_material_behavior_report_does_not_admit_authority_surface(
     )
 
 
-def test_same_family_high_risk_reviewer_is_rejected_by_canonical_validator(
+def test_reviewer_member_model_mismatch_is_rejected_by_canonical_validator(
     tmp_path: Path,
 ) -> None:
     root, base = _init_repo(tmp_path)
@@ -730,7 +730,8 @@ def test_same_family_high_risk_reviewer_is_rejected_by_canonical_validator(
 
     assert not outcome.admitted
     assert any(
-        "model family" in reason for _, reason in outcome.skipped_reports
+        "reviewer model family does not match reviewer member" in reason
+        for _, reason in outcome.skipped_reports
     )
 
 

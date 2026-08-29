@@ -1,4 +1,4 @@
-"""The shell whitelists and the Python roster must not drift apart.
+"""The shell lexical whitelists and the Python roster must not drift apart.
 
 `coordination/bin/send-event` hand-codes the identities it accepts in shell
 `case` statements. protocol_mailbox owns the roster those statements mirror.
@@ -41,21 +41,12 @@ def test_the_recipient_whitelist_is_the_live_identities_plus_broadcast() -> None
     )
 
 
-def test_kind_specific_identity_gates_match_the_two_capability_lanes() -> None:
-    formal = "# Formal review identity gate."
-    durable = "# Desktop durable-record identity gate."
-    assert _case_alternatives(formal, 'case "$FROM" in') == set(
-        protocol_mailbox.ROLES
-    )
-    assert _case_alternatives(formal, 'case "$TO" in') == set(
-        protocol_mailbox.ROLES
-    ) | {"all"}
-    assert _case_alternatives(durable, 'case "$FROM" in') == set(
-        protocol_mailbox.APP_MEMBERS
-    )
-    assert _case_alternatives(durable, 'case "$TO" in') == set(
-        protocol_mailbox.APP_MEMBERS
-    ) | {"all"}
+def test_kind_capability_policy_is_delegated_to_python() -> None:
+    text = _SEND_EVENT.read_text(encoding="utf-8")
+    assert "Python finalizer owns" in text
+    assert "Formal review identity gate" not in text
+    assert "Desktop durable-record identity gate" not in text
+    assert text.count("send-event-finalize") == 1
 
 
 def test_no_retired_seat_name_survives_in_a_send_event_whitelist() -> None:

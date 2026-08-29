@@ -41,7 +41,7 @@ def test_frozen_and_cross_lane_direct_git_events_are_refused(monkeypatch) -> Non
     messages = [issue.message for issue in issues]
     assert len(issues) == 2
     assert any("frozen for new writes" in message for message in messages)
-    assert any("formal review role route" in message for message in messages)
+    assert any("reviewer must be codex or claude" in message for message in messages)
 
 
 def test_payload_failure_mutation_and_current_archive_are_refused(monkeypatch) -> None:

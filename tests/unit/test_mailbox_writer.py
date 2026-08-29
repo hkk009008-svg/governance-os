@@ -256,11 +256,10 @@ def test_send_event_finalizer_rejects_coordinator_verify_request(
     )
     candidate.chmod(0o600)
 
-    # The identity lane rejects a legacy seat before its malformed request can
-    # reach the payload parser: only a temporary formal-review role may open
-    # the exact-range review pair.
+    # The identity lane rejects a retired seat before its malformed request can
+    # reach the payload parser: only an app member may open the review pair.
     with pytest.raises(
-        mailbox_writer.MailboxWriterError, match="formal review role"
+        mailbox_writer.MailboxWriterError, match="author must be"
     ):
         mailbox_writer._send_event_finalize(root, candidate, relative)
 

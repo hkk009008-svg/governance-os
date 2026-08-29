@@ -17,6 +17,29 @@ _FROZEN_FORWARD_READER_REVIEW_ARTIFACTS = {
         ("3f4ba504016d622f97a0675890cb0803dcdff3c8", "0e713967e928b1b124a82b0990bdbfefb084a2fb0679d36631862abaff96a767"),
 }
 
+# The final author/reviewer-shaped artifact on main. Those exact historical
+# routes remain readable through this commit; later introductions must use app
+# members and the current route policy.
+FORMAL_REVIEW_APP_MEMBER_CUTOVER_COMMIT = (
+    "db9033027719291ae996680a8756d274f59b957c"
+)
+
+
+def is_historical_retired_review_route(
+    kind: str, sender: str, recipient: str, introduction_commit: str, is_ancestor
+) -> bool:
+    retired_route = (
+        kind == "verify-request" and (sender, recipient) == ("author", "reviewer")
+    ) or (
+        kind == "verification-report"
+        and sender == "reviewer"
+        and recipient in {"author", "all"}
+    )
+    return retired_route and (
+        introduction_commit == FORMAL_REVIEW_APP_MEMBER_CUTOVER_COMMIT
+        or is_ancestor(introduction_commit, FORMAL_REVIEW_APP_MEMBER_CUTOVER_COMMIT)
+    )
+
 
 def _is_exact_frozen_forward_reader_artifact(path: str, introduction_commit: str, raw: bytes) -> bool:
     return _FROZEN_FORWARD_READER_REVIEW_ARTIFACTS.get(path) == (
@@ -76,6 +99,16 @@ def projected_request(
         raise mailbox_writer.MailboxWriterError(
             "Author model must resolve to a currently admitted author model "
             "for a new verify-request"
+        )
+    if (
+        current_policy
+        and request.author_seat in protocol_mailbox.APP_MEMBERS
+        and not codex_protocol_model.model_family_matches_member(
+            request.author_model, request.author_seat
+        )
+    ):
+        raise mailbox_writer.MailboxWriterError(
+            "author model family does not match author member"
         )
     if current_policy or exact_frozen:
         compact_pair_loop._require_path_references_resolve(
@@ -214,19 +247,33 @@ def validate_committed_new_event(
         introduction_commit,
         raw,
     )
+    historical_retired_route = not frozen_forward_reader and (
+        is_historical_retired_review_route(
+            kind,
+            match.group("sender"),
+            match.group("recipient"),
+            introduction_commit,
+            lambda ancestor, descendant: projection.commits.is_ancestor(
+                ancestor, descendant
+            ),
+        )
+    )
+    current_policy = not (frozen_forward_reader or historical_retired_route)
     problem = mailbox_writer.new_write_envelope_problem(
         kind, match.group("sender"), match.group("recipient")
     )
-    if problem is not None and not frozen_forward_reader:
+    if problem is not None and current_policy:
         raise mailbox_writer.MailboxWriterError(problem)
     if kind == "verify-request":
         projected_request(
-            projection, repo_root, path, introduction_commit, current_policy=not frozen_forward_reader,
+            projection, repo_root, path, introduction_commit,
+            current_policy=current_policy,
         )
         return
     if kind == "verification-report":
         projected_report(
-            projection, repo_root, path, introduction_commit, current_policy=not frozen_forward_reader,
+            projection, repo_root, path, introduction_commit,
+            current_policy=current_policy,
         )
         return
     if kind == "findings":

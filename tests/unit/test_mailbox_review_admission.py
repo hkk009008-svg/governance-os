@@ -84,7 +84,7 @@ def test_orphan_report_is_refused_instead_of_skipped(
 ) -> None:
     request_path = (
         "coordination/mailbox/sent/"
-        "2026-09-07T23-59-00Z-author-to-reviewer-verify-request.md"
+        "2026-09-07T23-59-00Z-codex-to-claude-verify-request.md"
     )
     raw = event(
         ORPHAN_REPORT,
@@ -94,7 +94,7 @@ VERDICT: FAIL
 Verification request: {request_path}@{'a' * 40}
 Reviewed head: {'b' * 40}
 Reviewed base: {'c' * 40}
-Reviewer seat: reviewer
+Reviewer seat: claude
 Reviewer model: claude-opus-4-6-thinking
 Risk class: material-behavior
 
@@ -136,7 +136,7 @@ def test_exact_pin_reaches_only_the_committed_reader(monkeypatch, repo_root: Pat
             SimpleNamespace(kinds=protocol_mailbox.KNOWN_KINDS), repo_root, path, raw, commit
         )
         assert calls == [{"current_policy": False}]
-        with pytest.raises(mailbox_writer.MailboxWriterError, match="formal review role route"):
+        with pytest.raises(mailbox_writer.MailboxWriterError, match="codex"):
             mailbox_writer.validate_event_candidate_bytes(repo_root, raw, path, validate_range=False)
 
 
@@ -152,7 +152,7 @@ def test_pin_rejects_one_variable_drift(monkeypatch, repo_root: Path) -> None:
         (path, commit, raw.replace(b"verify-request", b"verify-request\nChanged: true")),
     )
     for candidate_path, candidate_commit, candidate_raw in cases:
-        with pytest.raises(mailbox_writer.MailboxWriterError, match="formal review role route"):
+        with pytest.raises(mailbox_writer.MailboxWriterError, match="codex"):
             admission.validate_committed_new_event(
                 SimpleNamespace(kinds=protocol_mailbox.KNOWN_KINDS), repo_root,
                 candidate_path, candidate_raw, candidate_commit,
@@ -167,3 +167,13 @@ def test_pin_cannot_reopen_non_formal_legacy_routes(monkeypatch, repo_root: Path
     with pytest.raises(mailbox_writer.MailboxWriterError, match="sender must be a desktop app"):
         admission.validate_committed_new_event(
             SimpleNamespace(kinds=protocol_mailbox.KNOWN_KINDS), repo_root, path, raw, commit)
+
+
+def test_retired_role_route_stops_at_the_app_member_cutover() -> None:
+    check = admission.is_historical_retired_review_route
+    cutoff = admission.FORMAL_REVIEW_APP_MEMBER_CUTOVER_COMMIT
+    ancestor = lambda candidate, _cutoff: candidate == "pre"
+    assert check("verify-request", "author", "reviewer", cutoff, ancestor)
+    assert check("verification-report", "reviewer", "all", "pre", ancestor)
+    assert not check("verify-request", "author", "reviewer", "post", ancestor)
+    assert not check("verification-report", "agy", "all", "pre", ancestor)

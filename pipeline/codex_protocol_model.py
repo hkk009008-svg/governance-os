@@ -380,6 +380,13 @@ def model_family(model_id: str) -> str | None:
     return None if record is None else record[1]
 
 
+MEMBER_MODEL_FAMILIES = {"codex": "gpt", "claude": "claude", "agy": "gemini"}
+
+
+def model_family_matches_member(model_id: str, member: str) -> bool:
+    return model_family(model_id) == MEMBER_MODEL_FAMILIES.get(member)
+
+
 def models_are_independent(author_model: str, reviewer_model: str) -> bool:
     """Return whether two system-visible model IDs are different families."""
     author_family = model_family(author_model)

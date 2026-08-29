@@ -251,7 +251,22 @@ def _validate_current_envelope(
         introduction_commit,
         raw,
     )
-    if problem is not None and not frozen_forward_reader:
+    historical_retired_route = (
+        mailbox_review_admission.is_historical_retired_review_route(
+            envelope.group("kind"),
+            envelope.group("sender"),
+            envelope.group("recipient"),
+            introduction_commit,
+            lambda ancestor, descendant: git_runner.run_git(
+                root,
+                ("merge-base", "--is-ancestor", ancestor, descendant),
+                mode="authority",
+            ).returncode == 0,
+        )
+    )
+    if problem is not None and not (
+        frozen_forward_reader or historical_retired_route
+    ):
         raise pair.CompactPairError(problem)
 
 
