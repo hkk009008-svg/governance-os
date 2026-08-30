@@ -10,11 +10,15 @@ import mailbox_writer
 import protocol_mailbox
 
 
-_FROZEN_FORWARD_READER_REVIEW_ARTIFACTS = {
+_FROZEN_LEGACY_REVIEW_ARTIFACTS = {
     "coordination/mailbox/sent/2026-08-27T20-35-21Z-director-to-operator-verify-request.md":
         ("5601411162075259c039b89c72f40d1fa0b6a12b", "d5abf22a35ddc2e2912d8c1f35fa57e4b848cbe96f8f7236eff35dbe1a751cb3"),
     "coordination/mailbox/sent/2026-08-28T02-43-08Z-operator-to-director-verification-report.md":
         ("3f4ba504016d622f97a0675890cb0803dcdff3c8", "0e713967e928b1b124a82b0990bdbfefb084a2fb0679d36631862abaff96a767"),
+    "coordination/mailbox/sent/2026-08-29T19-56-48Z-author-to-reviewer-verify-request.md":
+        ("05055f1058db4835355a3925eb7d528104c2f713", "6e19815297a0c573fa35875bbbe5b0924e77815114b8f7cb88653ecb12dcc255"),
+    "coordination/mailbox/sent/2026-08-29T23-56-32Z-reviewer-to-author-verification-report.md":
+        ("6da6ac65b48fc2d5198cfedec6021ff2f60dec98", "79524570bed86fa73742512790be92af2dea39acd8e0147ff10e268cb2e288b9"),
 }
 
 # The final author/reviewer-shaped artifact on main. Those exact historical
@@ -41,13 +45,13 @@ def is_historical_retired_review_route(
     )
 
 
-def _is_exact_frozen_forward_reader_artifact(path: str, introduction_commit: str, raw: bytes) -> bool:
-    return _FROZEN_FORWARD_READER_REVIEW_ARTIFACTS.get(path) == (
+def _is_exact_frozen_legacy_artifact(path: str, introduction_commit: str, raw: bytes) -> bool:
+    return _FROZEN_LEGACY_REVIEW_ARTIFACTS.get(path) == (
         introduction_commit, hashlib.sha256(raw).hexdigest()
     )
 
 
-def _is_exact_frozen_forward_reader_route(
+def _is_exact_frozen_legacy_route(
     kind: str,
     sender: str,
     recipient: str,
@@ -57,8 +61,11 @@ def _is_exact_frozen_forward_reader_route(
 ) -> bool:
     return (
         kind in mailbox_writer.FORMAL_REVIEW_KINDS
-        and (sender in protocol_mailbox.LEGACY_SEATS or recipient in protocol_mailbox.LEGACY_SEATS)
-        and _is_exact_frozen_forward_reader_artifact(path, introduction_commit, raw)
+        and (
+            sender in {*protocol_mailbox.ROLES, *protocol_mailbox.LEGACY_SEATS}
+            or recipient in {*protocol_mailbox.ROLES, *protocol_mailbox.LEGACY_SEATS}
+        )
+        and _is_exact_frozen_legacy_artifact(path, introduction_commit, raw)
     )
 
 
@@ -73,7 +80,7 @@ def projected_request(
         raise mailbox_writer.MailboxWriterError(
             f"request binding is not its exact introduction: {path}@{commit}"
         )
-    exact_frozen = _is_exact_frozen_forward_reader_artifact(path, commit, raw)
+    exact_frozen = _is_exact_frozen_legacy_artifact(path, commit, raw)
     request = compact_pair_loop.parse_verify_request_committed_bytes(
         repo_root,
         path,
@@ -152,7 +159,7 @@ def projected_report(
         raise mailbox_writer.MailboxWriterError(
             f"report binding is not its exact introduction: {path}@{commit}"
         )
-    exact_frozen = _is_exact_frozen_forward_reader_artifact(path, commit, raw)
+    exact_frozen = _is_exact_frozen_legacy_artifact(path, commit, raw)
     structural_policy = current_policy or exact_frozen
     historical_model_policy = exact_frozen or not current_policy and (
         projection.review_family_cutover_events is None
@@ -239,7 +246,7 @@ def validate_committed_new_event(
         repo_root, raw, path, kinds=projection.kinds
     )
     kind = match.group("kind")
-    frozen_forward_reader = _is_exact_frozen_forward_reader_route(
+    frozen_legacy = _is_exact_frozen_legacy_route(
         kind,
         match.group("sender"),
         match.group("recipient"),
@@ -247,7 +254,7 @@ def validate_committed_new_event(
         introduction_commit,
         raw,
     )
-    historical_retired_route = not frozen_forward_reader and (
+    historical_retired_route = not frozen_legacy and (
         is_historical_retired_review_route(
             kind,
             match.group("sender"),
@@ -258,7 +265,7 @@ def validate_committed_new_event(
             ),
         )
     )
-    current_policy = not (frozen_forward_reader or historical_retired_route)
+    current_policy = not (frozen_legacy or historical_retired_route)
     problem = mailbox_writer.new_write_envelope_problem(
         kind, match.group("sender"), match.group("recipient")
     )

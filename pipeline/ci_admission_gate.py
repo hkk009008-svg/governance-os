@@ -249,7 +249,7 @@ def _validate_current_envelope(
         envelope.group("sender"),
         envelope.group("recipient"),
     )
-    frozen_forward_reader = mailbox_review_admission._is_exact_frozen_forward_reader_route(
+    frozen_legacy = mailbox_review_admission._is_exact_frozen_legacy_route(
         envelope.group("kind"),
         envelope.group("sender"),
         envelope.group("recipient"),
@@ -271,7 +271,7 @@ def _validate_current_envelope(
         )
     )
     if problem is not None and not (
-        frozen_forward_reader or historical_retired_route
+        frozen_legacy or historical_retired_route
     ):
         raise pair.CompactPairError(problem)
 

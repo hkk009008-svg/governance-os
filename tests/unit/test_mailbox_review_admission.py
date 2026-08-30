@@ -29,11 +29,25 @@ REPORT = (
     "3f4ba504016d622f97a0675890cb0803dcdff3c8",
     "0e713967e928b1b124a82b0990bdbfefb084a2fb0679d36631862abaff96a767",
 )
+PR63_REQUEST = (
+    "coordination/mailbox/sent/2026-08-29T19-56-48Z-author-to-reviewer-verify-request.md",
+    "05055f1058db4835355a3925eb7d528104c2f713",
+    "6e19815297a0c573fa35875bbbe5b0924e77815114b8f7cb88653ecb12dcc255",
+)
+PR63_REPORT = (
+    "coordination/mailbox/sent/2026-08-29T23-56-32Z-reviewer-to-author-verification-report.md",
+    "6da6ac65b48fc2d5198cfedec6021ff2f60dec98",
+    "79524570bed86fa73742512790be92af2dea39acd8e0147ff10e268cb2e288b9",
+)
 
 
 def _legacy(path: str, kind: str) -> bytes:
-    return event(path, f"Event type: {kind}").replace(
-        b"Cursor at send: cursorless", b"Cursor at send: 0"
+    raw = event(path, f"Event type: {kind}")
+    sender = protocol_mailbox.EVENT_NAME_RE.fullmatch(Path(path).name).group("sender")
+    return (
+        raw.replace(b"Cursor at send: cursorless", b"Cursor at send: 0")
+        if sender in protocol_mailbox.LEGACY_SEATS
+        else raw
     )
 
 
@@ -121,15 +135,22 @@ The request is absent.
 
 
 def test_exact_pin_reaches_only_the_committed_reader(monkeypatch, repo_root: Path) -> None:
-    assert admission._FROZEN_FORWARD_READER_REVIEW_ARTIFACTS == {
-        REQUEST[0]: REQUEST[1:], REPORT[0]: REPORT[1:]
+    assert admission._FROZEN_LEGACY_REVIEW_ARTIFACTS == {
+        REQUEST[0]: REQUEST[1:],
+        REPORT[0]: REPORT[1:],
+        PR63_REQUEST[0]: PR63_REQUEST[1:],
+        PR63_REPORT[0]: PR63_REPORT[1:],
     }
-    cases = ((REQUEST, "verify-request", "projected_request"),
-             (REPORT, "verification-report", "projected_report"))
+    cases = (
+        (REQUEST, "verify-request", "projected_request"),
+        (REPORT, "verification-report", "projected_report"),
+        (PR63_REQUEST, "verify-request", "projected_request"),
+        (PR63_REPORT, "verification-report", "projected_report"),
+    )
     for spec, kind, target in cases:
         path, commit, _digest = spec
         raw, calls = _legacy(path, kind), []
-        monkeypatch.setitem(admission._FROZEN_FORWARD_READER_REVIEW_ARTIFACTS,
+        monkeypatch.setitem(admission._FROZEN_LEGACY_REVIEW_ARTIFACTS,
                             path, (commit, hashlib.sha256(raw).hexdigest()))
         monkeypatch.setattr(admission, target, lambda *_args, **kw: calls.append(kw))
         admission.validate_committed_new_event(
@@ -140,21 +161,29 @@ def test_exact_pin_reaches_only_the_committed_reader(monkeypatch, repo_root: Pat
             mailbox_writer.validate_event_candidate_bytes(repo_root, raw, path, validate_range=False)
 
 
-def test_pin_rejects_one_variable_drift(monkeypatch, repo_root: Path) -> None:
-    path, commit, _digest = REQUEST
+@pytest.mark.parametrize("spec", (REQUEST, PR63_REQUEST))
+def test_pin_rejects_one_variable_drift(
+    monkeypatch, repo_root: Path, spec: tuple[str, str, str]
+) -> None:
+    path, commit, _digest = spec
     raw = _legacy(path, "verify-request")
-    monkeypatch.setitem(admission._FROZEN_FORWARD_READER_REVIEW_ARTIFACTS,
+    monkeypatch.setitem(admission._FROZEN_LEGACY_REVIEW_ARTIFACTS,
                         path, (commit, hashlib.sha256(raw).hexdigest()))
-    moved = path.replace("20-35-21Z", "20-35-22Z")
+    stamp = protocol_mailbox.EVENT_NAME_RE.fullmatch(Path(path).name).group("stamp")
+    moved = path.replace(stamp, f"{stamp[:-3]}59Z")
     cases = (
         (moved, commit, _legacy(moved, "verify-request")),
         (path, "9" * 40, raw),
         (path, commit, raw.replace(b"verify-request", b"verify-request\nChanged: true")),
     )
+    projection = SimpleNamespace(
+        kinds=protocol_mailbox.KNOWN_KINDS,
+        commits=SimpleNamespace(is_ancestor=lambda *_args: False),
+    )
     for candidate_path, candidate_commit, candidate_raw in cases:
         with pytest.raises(mailbox_writer.MailboxWriterError, match="codex"):
             admission.validate_committed_new_event(
-                SimpleNamespace(kinds=protocol_mailbox.KNOWN_KINDS), repo_root,
+                projection, repo_root,
                 candidate_path, candidate_raw, candidate_commit,
             )
 
@@ -162,7 +191,7 @@ def test_pin_rejects_one_variable_drift(monkeypatch, repo_root: Path) -> None:
 def test_pin_cannot_reopen_non_formal_legacy_routes(monkeypatch, repo_root: Path) -> None:
     path, commit = REQUEST[0].replace("verify-request", "findings"), REQUEST[1]
     raw = _legacy(path, "findings")
-    monkeypatch.setitem(admission._FROZEN_FORWARD_READER_REVIEW_ARTIFACTS,
+    monkeypatch.setitem(admission._FROZEN_LEGACY_REVIEW_ARTIFACTS,
                         path, (commit, hashlib.sha256(raw).hexdigest()))
     with pytest.raises(mailbox_writer.MailboxWriterError, match="sender must be a desktop app"):
         admission.validate_committed_new_event(

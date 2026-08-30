@@ -416,7 +416,7 @@ def test_range_without_authority_surfaces_is_admitted(tmp_path: Path) -> None:
     assert "admitted without review requirement" in gate.render(outcome)
 
 
-def test_gate_wires_the_exact_frozen_forward_reader_route(
+def test_gate_wires_the_exact_frozen_legacy_route(
     monkeypatch, repo_root: Path
 ) -> None:
     path = (
@@ -427,7 +427,7 @@ def test_gate_wires_the_exact_frozen_forward_reader_route(
     commit, calls = "3" * 40, []
     monkeypatch.setattr(
         gate.mailbox_review_admission,
-        "_is_exact_frozen_forward_reader_route",
+        "_is_exact_frozen_legacy_route",
         lambda *args: calls.append(args) or True,
     )
     gate._validate_current_envelope(
@@ -436,7 +436,7 @@ def test_gate_wires_the_exact_frozen_forward_reader_route(
     assert calls == [("verification-report", "operator", "director", path, commit, raw)]
     monkeypatch.setattr(
         gate.mailbox_review_admission,
-        "_is_exact_frozen_forward_reader_route",
+        "_is_exact_frozen_legacy_route",
         lambda *_args: False,
     )
     with pytest.raises(gate.pair.CompactPairError, match="publisher must be"):
