@@ -313,6 +313,49 @@ def _land_pair(
     )
 
 
+def _land_remediation_pair(
+    root: Path,
+    reviewed_base: str,
+    reviewed_head: str,
+    failed_report_commit: str,
+) -> None:
+    refs = (f"{EVIDENCE_PATH}@{_git(root, 'log', '--format=%H', '-1', '--', EVIDENCE_PATH)}",)
+    request_path = REQUEST_PATH.replace("12-00-00", "12-20-00")
+    report_path = REPORT_PATH.replace("12-10-00", "12-30-00")
+    failed_ref = f"{REPORT_PATH}@{failed_report_commit}"
+    request_text = _request_text(
+        reviewed_base,
+        reviewed_head,
+        risk_class="high-risk-control",
+        finding_refs=refs,
+    ).replace(
+        "2026-08-07T12:00:00Z", "2026-08-07T12:20:00Z"
+    ).replace(
+        "Risk class: high-risk-control\n",
+        f"Risk class: high-risk-control\nRemediates failed report: {failed_ref}\n",
+    )
+    _commit_file(root, request_path, request_text, "review: request remediation")
+    trigger = _git(root, "rev-parse", "HEAD")
+    report_text = _report_text(
+        reviewed_base,
+        reviewed_head,
+        trigger,
+        verdict="GO",
+        risk_class="high-risk-control",
+        reviewer_model="claude-opus-4-7",
+        finding_refs=refs,
+    ).replace(
+        "2026-08-07T12:10:00Z", "2026-08-07T12:30:00Z"
+    ).replace(
+        f"Verification request: {REQUEST_PATH}@",
+        f"Verification request: {request_path}@",
+    ).replace(
+        "Risk class: high-risk-control\n",
+        f"Risk class: high-risk-control\nSupersedes: {failed_ref}\n",
+    )
+    _commit_file(root, report_path, report_text, "review: publish remediation verdict")
+
+
 def _land_member_pair(
     root: Path,
     reviewed_base: str,
@@ -508,6 +551,85 @@ def test_authority_commit_without_report_is_blocked(tmp_path: Path) -> None:
     assert touched in outcome.uncovered
     assert "pipeline/mailbox_writer.py" in outcome.uncovered[touched]
     assert "BLOCKED" in gate.render(outcome)
+
+
+def test_supersession_uses_explicit_candidate_head_when_checkout_stays_at_base(
+    tmp_path: Path,
+) -> None:
+    root, base = _init_repo(tmp_path)
+    reviewed_head = _commit_file(
+        root, "src/ordinary.py", "VALUE = 2\n", "feat: ordinary reviewed work"
+    )
+    _land_pair(root, base, reviewed_head, verdict="FAIL")
+    failed_report_commit = _git(root, "rev-parse", "HEAD")
+    fixed_head = _commit_file(
+        root, "pipeline/mailbox_writer.py", "POLICY = 1\n", "fix: authority control"
+    )
+    _land_remediation_pair(root, reviewed_head, fixed_head, failed_report_commit)
+    candidate_head = _git(root, "rev-parse", "HEAD")
+    replacement_path = REPORT_PATH.replace("12-10-00", "12-30-00")
+    replacement_raw = _git(root, "show", f"{candidate_head}:{replacement_path}").encode()
+    replacement = gate.pair.parse_verification_report_committed_bytes(
+        root, replacement_path, replacement_raw
+    )
+
+    _git(root, "checkout", "-q", "--detach", base)
+
+    # Non-vacuity: the ambient/default validator reproduces the trusted-CI bug.
+    assert any(
+        "not in this history" in violation
+        for violation in gate.pair.validate_report(root, replacement)
+    )
+    outcome = gate.evaluate(root, base, candidate_head)
+
+    assert outcome.admitted, gate.render(outcome)
+
+
+def test_explicit_candidate_head_rejects_request_from_sibling_history(
+    tmp_path: Path,
+) -> None:
+    root, base = _init_repo(tmp_path)
+    refs = (_mint_evidence(root),)
+    reviewed_head = _commit_file(
+        root, "src/ordinary.py", "VALUE = 2\n", "feat: ordinary reviewed work"
+    )
+    main_branch = _git(root, "branch", "--show-current")
+    _git(root, "checkout", "-q", "-b", "sibling-request")
+    trigger = _commit_file(
+        root,
+        REQUEST_PATH,
+        _request_text(
+            base,
+            reviewed_head,
+            risk_class="high-risk-control",
+            finding_refs=refs,
+        ),
+        "review: request on sibling",
+    )
+    _git(root, "checkout", "-q", main_branch)
+    candidate_head = _commit_file(
+        root,
+        REPORT_PATH,
+        _report_text(
+            base,
+            reviewed_head,
+            trigger,
+            verdict="GO",
+            risk_class="high-risk-control",
+            reviewer_model="claude-opus-4-7",
+            finding_refs=refs,
+        ),
+        "review: report with sibling request",
+    )
+    report = gate.pair.parse_verification_report(
+        root, REPORT_PATH
+    )
+
+    violations = gate.pair.validate_report(
+        root, report, history_head=candidate_head
+    )
+
+    assert "request binding invalid: request trigger commit is not in this history" in violations
 
 
 def test_new_script_cannot_shadow_the_gate_outside_admission(

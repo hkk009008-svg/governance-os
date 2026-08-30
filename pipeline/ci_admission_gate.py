@@ -338,7 +338,10 @@ def evaluate(root: Path, base: str, head: str) -> Outcome:
         except (mailbox_writer.MailboxWriterError, pair.CompactPairError) as exc:
             outcome.skipped_reports.append((path, f"unparseable: {exc}"))
             continue
-        violations = pair.validate_report(root, report)
+        # Trusted PR admission deliberately keeps the checkout at the base and
+        # reads the fetched candidate by explicit SHA. Supersession ancestry
+        # must use that same candidate history, not the checkout's literal HEAD.
+        violations = pair.validate_report(root, report, history_head=head)
         if violations:
             outcome.skipped_reports.append((path, "; ".join(violations)))
             continue

@@ -1368,14 +1368,26 @@ def remediation_request_violations(
     return violations
 
 
-def validate_report(root: Path, report: VerificationReport) -> list[str]:
+def validate_report(
+    root: Path,
+    report: VerificationReport,
+    *,
+    history_head: str = "HEAD",
+) -> list[str]:
     root = root.resolve()
     try:
         request = parse_verify_request(root, report.request_path, report.request_commit)
     except CompactPairError as exc:
         return [f"request binding invalid: {exc}"]
+    try:
+        if not _is_ancestor(root, request.trigger_commit, history_head):
+            raise CompactPairError("request trigger commit is not in this history")
+    except CompactPairError as exc:
+        return [f"request binding invalid: {exc}"]
     violations = _report_structure_violations(report, request)
-    violations += _supersedes_violations(root, report, request)
+    violations += _supersedes_violations(
+        root, report, request, history_head=history_head
+    )
     try:
         reviewed_root = _reviewed_root(root, request.reviewed_repository)
         base = _full_commit(reviewed_root, request.reviewed_base, "Reviewed base")
@@ -1580,6 +1592,8 @@ def _load_report_at_introduction(
     root: Path,
     path: str,
     commit: str,
+    *,
+    history_head: str = "HEAD",
 ) -> VerificationReport:
     resolved = _full_commit(root, commit, "report introduction commit")
     change = _git(
@@ -1597,7 +1611,7 @@ def _load_report_at_introduction(
         raise CompactPairError(
             "report reference commit must be the named report's introduction commit"
         )
-    if not _is_ancestor(root, resolved, "HEAD"):
+    if not _is_ancestor(root, resolved, history_head):
         raise CompactPairError("report introduction commit is not in this history")
     return _parse_verification_report_bytes(
         root,
@@ -1636,6 +1650,8 @@ def _supersedes_violations(
     root: Path,
     report: VerificationReport,
     request: VerifyRequest,
+    *,
+    history_head: str = "HEAD",
 ) -> list[str]:
     """Resolve a Supersedes claim against Git: it names the seat's own dead verdict."""
     if report.supersedes is None:
@@ -1647,7 +1663,9 @@ def _supersedes_violations(
         return []
     path, commit = report.supersedes
     try:
-        superseded = _load_report_at_introduction(root, path, commit)
+        superseded = _load_report_at_introduction(
+            root, path, commit, history_head=history_head
+        )
         different_request = (
             superseded.request_path != report.request_path
             or superseded.request_commit != report.request_commit
@@ -1661,7 +1679,9 @@ def _supersedes_violations(
         if report_violations:
             raise CompactPairError("; ".join(report_violations))
         if different_request:
-            target_violations = validate_report(root, superseded)
+            target_violations = validate_report(
+                root, superseded, history_head=history_head
+            )
             if target_violations:
                 raise CompactPairError(
                     "superseded report is invalid: " + "; ".join(target_violations)
