@@ -882,12 +882,11 @@ def compose_request(
     author supplies the judgement — seats, risk class, outcome — and everything
     git already knows is resolved here instead of transcribed by hand.
     """
-    if author_seat != "author":
-        raise CompactPairError("Author seat must be the live task responsibility 'author'")
-    if assigned_operator != "reviewer":
-        raise CompactPairError(
-            "Assigned operator must be the live task responsibility 'reviewer'"
-        )
+    route_problem = protocol_mailbox.formal_review_route_problem(
+        "verify-request", author_seat, assigned_operator
+    )
+    if route_problem is not None:
+        raise CompactPairError(route_problem)
     try:
         profile = codex_protocol_model.review_profile_for(risk_class)
     except ValueError:
@@ -908,6 +907,8 @@ def compose_request(
             "Author model must resolve to a currently admitted author model "
             "for a new verify-request"
         )
+    if not codex_protocol_model.model_family_matches_member(author_model, author_seat):
+        raise CompactPairError("author model family does not match author member")
     outcome = outcome.strip()
     if not outcome:
         raise CompactPairError("Outcome must be nonempty")

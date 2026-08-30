@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -20,11 +21,19 @@ from mailbox_admission_test_support import event
 
 REQUEST_PATH = (
     "coordination/mailbox/sent/"
-    "2026-08-07T12-00-00Z-author-to-reviewer-verify-request.md"
+    "2026-08-07T12-00-00Z-codex-to-claude-verify-request.md"
 )
 REPORT_PATH = (
     "coordination/mailbox/sent/"
-    "2026-08-07T12-10-00Z-reviewer-to-author-verification-report.md"
+    "2026-08-07T12-10-00Z-claude-to-codex-verification-report.md"
+)
+SECOND_REQUEST_PATH = (
+    "coordination/mailbox/sent/"
+    "2026-08-07T12-20-00Z-codex-to-claude-verify-request.md"
+)
+SECOND_REPORT_PATH = (
+    "coordination/mailbox/sent/"
+    "2026-08-07T12-30-00Z-claude-to-codex-verification-report.md"
 )
 MEMBER_REQUEST_PATH = REQUEST_PATH.replace("author-to-reviewer", "codex-to-claude")
 MEMBER_REPORT_PATH = REPORT_PATH.replace("reviewer-to-author", "claude-to-codex")
@@ -121,6 +130,7 @@ def _request_text(
     *,
     risk_class: str,
     finding_refs: tuple[str, ...],
+    timestamp: str = "2026-08-07T12:00:00Z",
 ) -> str:
     abuse = (
         ""
@@ -132,16 +142,16 @@ def _request_text(
         )
     )
     return f"""\
-# Author → Reviewer: verify outcome
+# Codex → Claude: verify outcome
 
-**When:** 2026-08-07T12:00:00Z · **From:** author (online)
+**When:** {timestamp} · **From:** codex (online)
 
 Event type: verify-request
 Reviewed head: {head}
 Reviewed base: {base}
-Author seat: author
+Author seat: codex
 Author model: gpt-5.6-sol
-Assigned operator: reviewer
+Assigned operator: claude
 Risk class: {risk_class}
 
 ## Outcome
@@ -164,6 +174,8 @@ def _report_text(
     reviewer_model: str,
     finding_refs: tuple[str, ...],
     disposition: str = "addressed",
+    timestamp: str = "2026-08-07T12:10:00Z",
+    request_path: str = REQUEST_PATH,
 ) -> str:
     abuse_binding = (
         ""
@@ -172,16 +184,16 @@ def _report_text(
     )
     dispositions = tuple(f"{ref}: {disposition}" for ref in finding_refs)
     return f"""\
-# Reviewer → Author: outcome verification
+# Claude → Codex: outcome verification
 
-**When:** 2026-08-07T12:10:00Z · **From:** reviewer (online)
+**When:** {timestamp} · **From:** claude (online)
 
 Event type: verification-report
 VERDICT: {verdict}
-Verification request: {REQUEST_PATH}@{trigger}
+Verification request: {request_path}@{trigger}
 Reviewed head: {head}
 Reviewed base: {base}
-Reviewer seat: reviewer
+Reviewer seat: claude
 Reviewer model: {reviewer_model}
 Risk class: {risk_class}
 {abuse_binding}
@@ -263,20 +275,28 @@ def _land_pair(
     risk_class: str = "high-risk-control",
     reviewer_model: str = "claude-opus-4-7",
     disposition: str = "addressed",
+    request_path: str = REQUEST_PATH,
+    report_path: str = REPORT_PATH,
+    timestamps: tuple[str, str] = ("2026-08-07T12:00:00Z", "2026-08-07T12:10:00Z"),
+    finding_refs: tuple[str, ...] | None = None,
 ) -> None:
-    refs = (_mint_evidence(root),)
+    refs = finding_refs or (_mint_evidence(root),)
     _commit_file(
         root,
-        REQUEST_PATH,
+        request_path,
         _request_text(
-            reviewed_base, reviewed_head, risk_class=risk_class, finding_refs=refs
+            reviewed_base,
+            reviewed_head,
+            risk_class=risk_class,
+            finding_refs=refs,
+            timestamp=timestamps[0],
         ),
         "review: request verification",
     )
     trigger = _git(root, "rev-parse", "HEAD")
     _commit_file(
         root,
-        REPORT_PATH,
+        report_path,
         _report_text(
             reviewed_base,
             reviewed_head,
@@ -286,6 +306,8 @@ def _land_pair(
             reviewer_model=reviewer_model,
             finding_refs=refs,
             disposition=disposition,
+            timestamp=timestamps[1],
+            request_path=request_path,
         ),
         "review: publish verdict",
     )
@@ -377,7 +399,7 @@ def _land_member_pair(
         Path(report_path).name
     ).group("recipient")
     report_text = report_text.replace(
-        "# Reviewer → Author:", f"# Claude → {recipient.capitalize()}:"
+        "# Claude → Codex:", f"# Claude → {recipient.capitalize()}:"
     )
     _commit_file(root, report_path, report_text, "review: verdict by member")
 
@@ -394,7 +416,7 @@ def test_range_without_authority_surfaces_is_admitted(tmp_path: Path) -> None:
     assert "admitted without review requirement" in gate.render(outcome)
 
 
-def test_gate_wires_the_exact_frozen_forward_reader_route(
+def test_gate_wires_the_exact_frozen_legacy_route(
     monkeypatch, repo_root: Path
 ) -> None:
     path = (
@@ -405,7 +427,7 @@ def test_gate_wires_the_exact_frozen_forward_reader_route(
     commit, calls = "3" * 40, []
     monkeypatch.setattr(
         gate.mailbox_review_admission,
-        "_is_exact_frozen_forward_reader_route",
+        "_is_exact_frozen_legacy_route",
         lambda *args: calls.append(args) or True,
     )
     gate._validate_current_envelope(
@@ -414,16 +436,16 @@ def test_gate_wires_the_exact_frozen_forward_reader_route(
     assert calls == [("verification-report", "operator", "director", path, commit, raw)]
     monkeypatch.setattr(
         gate.mailbox_review_admission,
-        "_is_exact_frozen_forward_reader_route",
+        "_is_exact_frozen_legacy_route",
         lambda *_args: False,
     )
-    with pytest.raises(gate.pair.CompactPairError, match="formal review role route"):
+    with pytest.raises(gate.pair.CompactPairError, match="publisher must be"):
         gate._validate_current_envelope(
             repo_root, raw, path, protocol_mailbox.KNOWN_KINDS, commit
         )
 
 
-def test_member_route_forward_reader_does_not_open_the_writer(tmp_path: Path) -> None:
+def test_member_route_cutover_opens_the_writer(tmp_path: Path) -> None:
     root, base = _init_repo(tmp_path)
     reviewed_head = _commit_file(
         root, "pipeline/mailbox_writer.py", "POLICY = 1\n", "feat: writer policy"
@@ -435,10 +457,10 @@ def test_member_route_forward_reader_does_not_open_the_writer(tmp_path: Path) ->
     assert outcome.admitted, gate.render(outcome)
     assert gate.mailbox_writer.new_write_envelope_problem(
         "verify-request", "codex", "claude"
-    ) is not None
+    ) is None
     assert gate.mailbox_writer.new_write_envelope_problem(
         "verification-report", "claude", "codex"
-    ) is not None
+    ) is None
 
 
 @pytest.mark.parametrize(
@@ -777,18 +799,67 @@ def test_candidate_only_request_and_report_admit_while_checkout_stays_at_base(
     assert [coverage.verdict for coverage in outcome.coverages] == ["GO"]
 
 
-def test_fail_verdict_does_not_admit(tmp_path: Path) -> None:
+@pytest.mark.parametrize("fresh_verdict", ("GO", "NITS"))
+@pytest.mark.parametrize("tamper", ("delete", "modify", "type"))
+def test_unsuperseded_current_fail_blocks_a_fresh_admitting_verdict(
+    tmp_path: Path, fresh_verdict: str, tamper: str,
+) -> None:
     root, base = _init_repo(tmp_path)
     reviewed_head = _commit_file(
         root, "pipeline/mailbox_writer.py", "WRITER = 1\n", "feat: writer"
     )
-    _land_pair(root, base, reviewed_head, verdict="FAIL")
+    refs = (_mint_evidence(root),)
+    _land_pair(
+        root, base, reviewed_head, verdict="FAIL",
+        disposition="counter-evidence", finding_refs=refs,
+    )
+    _land_pair(
+        root, base, reviewed_head, verdict=fresh_verdict,
+        request_path=SECOND_REQUEST_PATH, report_path=SECOND_REPORT_PATH,
+        timestamps=("2026-08-07T12:20:00Z", "2026-08-07T12:30:00Z"),
+        finding_refs=refs,
+    )
     head = _git(root, "rev-parse", "HEAD")
 
     outcome = gate.evaluate(root, base, head)
 
-    assert not outcome.admitted
-    assert any("FAIL" in reason for _, reason in outcome.skipped_reports)
+    assert not outcome.admitted, gate.render(outcome)
+    assert outcome.uncovered == {}
+    assert [path for path, _ in outcome.blocking_failures] == [REPORT_PATH]
+    tamper_base = head
+    (root / "pipeline/mailbox_writer.py").write_text("WRITER = 2\n", encoding="utf-8")
+    _git(root, "add", "pipeline/mailbox_writer.py")
+    if tamper == "delete":
+        _git(root, "rm", "-q", REPORT_PATH)
+    elif tamper == "modify":
+        (root / REPORT_PATH).write_text("changed\n", encoding="utf-8")
+        _git(root, "add", REPORT_PATH)
+    else:
+        (root / REPORT_PATH).unlink()
+        (root / REPORT_PATH).symlink_to("missing-report")
+        _git(root, "add", REPORT_PATH)
+    _git(root, "commit", "-q", "-m", f"test: {tamper} immutable FAIL")
+    with pytest.raises(gate.AdmissionError, match="immutable review artifact"):
+        gate.evaluate(root, tamper_base, _git(root, "rev-parse", "HEAD"))
+
+
+def test_remediation_coverage_inherits_only_the_superseded_reports_range(
+    tmp_path: Path,
+) -> None:
+    root, base = _init_repo(tmp_path)
+    original = _commit_file(root, "pipeline/original.py", "x = 1\n", "original")
+    fix = _commit_file(root, "pipeline/fix.py", "x = 2\n", "remediation")
+    unrelated_head = _commit_file(root, "src/unrelated.py", "x = 3\n", "unrelated")
+    failed_ref = (REPORT_PATH, "1" * 40)
+    unrelated_ref = (SECOND_REPORT_PATH, "2" * 40)
+    Report = SimpleNamespace
+    failed = Report(reviewed_base=base, reviewed_head=original, supersedes=None)
+    unrelated = Report(reviewed_base=fix, reviewed_head=unrelated_head, supersedes=None)
+    remediation = Report(reviewed_base=original, reviewed_head=fix, supersedes=failed_ref)
+
+    assert gate._coverage_commits(
+        root, remediation, {failed_ref: failed, unrelated_ref: unrelated}
+    ) == frozenset({original, fix})
 
 
 def test_nits_with_unresolved_hard_boundary_does_not_admit(tmp_path: Path) -> None:
@@ -820,16 +891,16 @@ def test_new_retired_role_report_cannot_admit_a_range(tmp_path: Path) -> None:
         root, "pipeline/mailbox_writer.py", "POLICY = 1\n", "feat: writer policy"
     )
     refs = (_mint_evidence(root),)
-    legacy_request = REQUEST_PATH.replace("author-to-reviewer", "director-to-operator")
-    legacy_report = REPORT_PATH.replace("reviewer-to-author", "operator-to-director")
+    legacy_request = REQUEST_PATH.replace("codex-to-claude", "director-to-operator")
+    legacy_report = REPORT_PATH.replace("claude-to-codex", "operator-to-director")
     request_text = (
         _request_text(
             base, reviewed_head, risk_class="high-risk-control", finding_refs=refs
         )
-        .replace("# Author → Reviewer", "# Director → Operator")
-        .replace("**From:** author", "**From:** director")
-        .replace("Author seat: author", "Author seat: director")
-        .replace("Assigned operator: reviewer", "Assigned operator: operator")
+        .replace("# Codex → Claude", "# Director → Operator")
+        .replace("**From:** codex", "**From:** director")
+        .replace("Author seat: codex", "Author seat: director")
+        .replace("Assigned operator: claude", "Assigned operator: operator")
         .replace("Cursor at send: cursorless", "Cursor at send: 0")
     )
     _commit_file(root, legacy_request, request_text, "review: legacy request")
@@ -844,10 +915,10 @@ def test_new_retired_role_report_cannot_admit_a_range(tmp_path: Path) -> None:
             reviewer_model="claude-opus-4-6-thinking",
             finding_refs=refs,
         )
-        .replace("# Reviewer → Author", "# Operator → Director")
-        .replace("**From:** reviewer", "**From:** operator")
+        .replace("# Claude → Codex", "# Operator → Director")
+        .replace("**From:** claude", "**From:** operator")
         .replace(f"Verification request: {REQUEST_PATH}@", f"Verification request: {legacy_request}@")
-        .replace("Reviewer seat: reviewer", "Reviewer seat: operator")
+        .replace("Reviewer seat: claude", "Reviewer seat: operator")
         .replace("Cursor at send: cursorless", "Cursor at send: 0")
     )
     _commit_file(root, legacy_report, report_text, "review: legacy report")
@@ -857,7 +928,7 @@ def test_new_retired_role_report_cannot_admit_a_range(tmp_path: Path) -> None:
 
     assert not outcome.admitted
     assert any(
-        "formal review role route" in reason
+        "publisher must be codex or claude" in reason
         for _, reason in outcome.skipped_reports
     )
 
@@ -870,15 +941,15 @@ def test_legacy_request_and_current_report_cannot_cross_generations(
         root, "pipeline/mailbox_writer.py", "POLICY = 1\n", "feat: writer policy"
     )
     refs = (_mint_evidence(root),)
-    legacy_request = REQUEST_PATH.replace("author-to-reviewer", "director-to-operator")
+    legacy_request = REQUEST_PATH.replace("codex-to-claude", "director-to-operator")
     request_text = (
         _request_text(
             base, reviewed_head, risk_class="high-risk-control", finding_refs=refs
         )
-        .replace("# Author → Reviewer", "# Director → Operator")
-        .replace("**From:** author", "**From:** director")
-        .replace("Author seat: author", "Author seat: director")
-        .replace("Assigned operator: reviewer", "Assigned operator: operator")
+        .replace("# Codex → Claude", "# Director → Operator")
+        .replace("**From:** codex", "**From:** director")
+        .replace("Author seat: codex", "Author seat: director")
+        .replace("Assigned operator: claude", "Assigned operator: operator")
         .replace("Cursor at send: cursorless", "Cursor at send: 0")
     )
     _commit_file(root, legacy_request, request_text, "review: legacy request")
@@ -944,7 +1015,7 @@ def test_material_behavior_report_does_not_admit_authority_surface(
         base,
         reviewed_head,
         risk_class="material-behavior",
-        reviewer_model="gpt-5.6-terra",
+        reviewer_model="claude-opus-4-6-thinking",
     )
     head = _git(root, "rev-parse", "HEAD")
 
@@ -957,7 +1028,7 @@ def test_material_behavior_report_does_not_admit_authority_surface(
     )
 
 
-def test_same_family_high_risk_reviewer_is_rejected_by_canonical_validator(
+def test_reviewer_member_model_mismatch_is_rejected_by_canonical_validator(
     tmp_path: Path,
 ) -> None:
     root, base = _init_repo(tmp_path)
@@ -971,7 +1042,8 @@ def test_same_family_high_risk_reviewer_is_rejected_by_canonical_validator(
 
     assert not outcome.admitted
     assert any(
-        "model family" in reason for _, reason in outcome.skipped_reports
+        "reviewer model family does not match reviewer member" in reason
+        for _, reason in outcome.skipped_reports
     )
 
 

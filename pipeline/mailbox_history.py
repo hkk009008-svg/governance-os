@@ -2,7 +2,7 @@
 """Committed-history path compatibility across the scripts/ -> pipeline/ move."""
 from __future__ import annotations
 
-_REVIEWING_IDENTITIES = ("reviewer", "operator", "operator2")
+_REVIEWING_IDENTITIES = ("codex", "claude", "reviewer", "operator", "operator2")
 
 # Current code names pipeline/ paths, while older commits store the same
 # manifests under scripts/. Ask Git only for paths present at that commit and

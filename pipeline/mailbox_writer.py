@@ -325,7 +325,7 @@ def validate_event_candidate(
 FORMAL_REVIEW_KINDS = frozenset({"verification-report", "verify-request"})
 APP_DURABLE_KINDS = frozenset({"decision", "findings", "learning-candidate"})
 NEW_WRITE_KINDS = FORMAL_REVIEW_KINDS | APP_DURABLE_KINDS
-FORMAL_REVIEW_SENDERS = frozenset(protocol_mailbox.ROLES)
+FORMAL_REVIEW_SENDERS = frozenset(protocol_mailbox.APP_MEMBERS)
 FORMAL_REVIEW_RECIPIENTS = FORMAL_REVIEW_SENDERS | {"all"}
 APP_DURABLE_SENDERS = frozenset(protocol_mailbox.APP_MEMBERS)
 APP_DURABLE_RECIPIENTS = APP_DURABLE_SENDERS | {"all"}
@@ -347,18 +347,13 @@ def new_write_envelope_problem(
             "parsing read-only"
         )
     if kind == "verify-request":
-        if (sender, recipient) != ("author", "reviewer"):
-            return (
-                "verify-request formal review role route must be author to reviewer"
-            )
-        return None
+        return protocol_mailbox.formal_review_route_problem(
+            kind, sender, recipient
+        )
     if kind == "verification-report":
-        if sender != "reviewer" or recipient not in {"author", "all"}:
-            return (
-                "verification-report formal review role route must be reviewer "
-                "to author or all"
-            )
-        return None
+        return protocol_mailbox.formal_review_route_problem(
+            kind, sender, recipient
+        )
     if sender not in APP_DURABLE_SENDERS:
         return f"{kind} sender must be a desktop app member"
     if recipient not in APP_DURABLE_RECIPIENTS:

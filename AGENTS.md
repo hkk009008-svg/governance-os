@@ -95,10 +95,10 @@ temporary responsibilities for that exact range:
 `docs/protocol/agents/risk-classes.md` defines the boundary. Material behavior
 needs non-author review of the exact committed range. Authority, security,
 executable composition, side-effect gates, and trust-granting schemas also
-need different-model-family review and explicit abuse-class analysis. AGY may
-challenge and supply evidence throughout, but cannot be the sole formal
-reviewer or accepting verdict. Remove the temporary responsibilities when the
-review ends.
+need different-model-family review and explicit abuse-class analysis. Native AGY
+may implement, challenge, supply evidence, and publish its request, but never a
+formal verdict. The parent-owned `codex-agy` helper cannot claim `agy`, write
+mailbox artifacts, or gain authority. Remove responsibilities when review ends.
 
 ## Authority and durable state
 
@@ -136,5 +136,5 @@ bin/pipeline check
 adapter handshakes. It does not launch a provider, send a team message, spend,
 or grant authority. Each verb's `--help` is the source for its arguments.
 
-Provider adapters: `docs/protocol/codex/continuation.md` and `docs/protocol/claude/continuation.md`.
+Provider adapters: `docs/protocol/codex/continuation.md`, `docs/protocol/claude/continuation.md`, and `docs/protocol/agy/continuation.md`.
 Resolve targets with `bin/pipeline target`, then follow their own instructions.

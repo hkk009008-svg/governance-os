@@ -79,9 +79,11 @@ def test_allowlist_is_a_subset_of_the_registry_and_partitions_it() -> None:
 @pytest.mark.parametrize(
     "kind,sender,recipient",
     (
-        ("verify-request", "author", "reviewer"),
-        ("verification-report", "reviewer", "author"),
-        ("verification-report", "reviewer", "all"),
+        ("verify-request", "codex", "claude"),
+        ("verify-request", "claude", "codex"),
+        ("verify-request", "agy", "claude"),
+        ("verification-report", "claude", "agy"),
+        ("verification-report", "codex", "all"),
         ("findings", "codex", "claude"),
         ("learning-candidate", "agy", "all"),
         ("decision", "claude", "codex"),
@@ -99,10 +101,11 @@ def test_new_write_envelope_rule_accepts_only_exact_capability_lanes(
     "kind,sender,recipient",
     (
         ("status", "codex", "claude"),
-        ("verify-request", "codex", "reviewer"),
-        ("verify-request", "author", "all"),
-        ("verification-report", "author", "reviewer"),
-        ("verification-report", "reviewer", "reviewer"),
+        ("verify-request", "author", "reviewer"),
+        ("verify-request", "agy", "agy"),
+        ("verify-request", "codex", "agy"),
+        ("verification-report", "agy", "codex"),
+        ("verification-report", "claude", "claude"),
         ("findings", "author", "reviewer"),
         ("decision", "codex", "reviewer"),
         ("learning-candidate", "agy", "agy"),
@@ -134,19 +137,19 @@ def test_typed_only_kinds_refuse_generic_payloads(kind: str) -> None:
         )
 
 
-@pytest.mark.parametrize("kind", ("verify-request", "verification-report"))
-def test_formal_review_kinds_reject_app_member_identities(kind: str) -> None:
-    raw, relative = _candidate(kind)
-    with pytest.raises(mailbox_writer.MailboxWriterError, match="formal review role"):
-        mailbox_writer.validate_event_candidate_bytes(
-            _REPO_ROOT, raw, relative, validate_range=False
-        )
-
-
-@pytest.mark.parametrize("kind", ("verify-request", "verification-report"))
-def test_formal_review_kinds_reject_app_member_recipients(kind: str) -> None:
-    raw, relative = _candidate(kind, sender="author", recipient="codex")
-    with pytest.raises(mailbox_writer.MailboxWriterError, match="formal review role"):
+@pytest.mark.parametrize(
+    ("kind", "sender", "recipient", "message"),
+    (
+        ("verify-request", "author", "reviewer", "author must be"),
+        ("verification-report", "reviewer", "author", "publisher must be"),
+        ("verification-report", "agy", "codex", "publisher must be"),
+    ),
+)
+def test_formal_review_kinds_reject_retired_or_nonreviewer_publishers(
+    kind: str, sender: str, recipient: str, message: str
+) -> None:
+    raw, relative = _candidate(kind, sender=sender, recipient=recipient)
+    with pytest.raises(mailbox_writer.MailboxWriterError, match=message):
         mailbox_writer.validate_event_candidate_bytes(
             _REPO_ROOT, raw, relative, validate_range=False
         )
