@@ -390,7 +390,13 @@ def test_protocol_doctor_base_commands_include_binding_check():
     commands = protocol_doctor.base_commands(python_executable="PY", wave=2)
     assert ["PY", "pipeline/target_binding.py", "--check"] in commands
     assert ["PY", "pipeline/check_coordination.py"] in commands
-    assert ["PY", "pipeline/route_lineage.py", "--check"] in commands
+    assert ["PY", "pipeline/route_lineage.py", "--check"] not in commands
+
+    history = protocol_doctor.base_commands(
+        python_executable="PY", wave=2, history=True
+    )
+    assert ["PY", "pipeline/check_coordination.py", "--history"] in history
+    assert ["PY", "pipeline/route_lineage.py", "--check"] in history
 
 
 # --- autonomous route conflict enforcement ----------------------------------

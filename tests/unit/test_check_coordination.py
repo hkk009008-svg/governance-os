@@ -591,16 +591,26 @@ def test_heading_free_event_still_enforces_filename_envelope_and_cursor_guards(
         "Cursor at send: 0\n",
     )
 
-    issues = cc.run(
+    current_issues = cc.run(
         coord,
         since="2026-06-11",
         now="2026-07-07T18:02:00Z",
         docs_root=tmp_path / "docs",
     )
+    history_issues = cc.run(
+        coord,
+        since="2026-06-11",
+        now="2026-07-07T18:02:00Z",
+        docs_root=tmp_path / "docs",
+        history=True,
+    )
 
-    kinds = {issue.kind for issue in issues}
-    assert {"cursor_unparseable", "self_addressed", "when_mismatch"} <= kinds
-    assert "missing_end_trigger" not in kinds
+    current_kinds = {issue.kind for issue in current_issues}
+    history_kinds = {issue.kind for issue in history_issues}
+    assert {"self_addressed", "when_mismatch"} <= current_kinds
+    assert "cursor_unparseable" not in current_kinds
+    assert {"cursor_unparseable", "self_addressed", "when_mismatch"} <= history_kinds
+    assert "missing_end_trigger" not in history_kinds
 
 
 def test_scalar_cursor_without_bus_reports_mailbox_fallback_unread(
@@ -616,15 +626,26 @@ def test_scalar_cursor_without_bus_reports_mailbox_fallback_unread(
         "Cursor at send: 0\n",
     )
 
-    issues = cc.run(coord, now="2026-07-17T02:00:00Z", docs_root=tmp_path / "docs")
+    current_issues = cc.run(
+        coord, now="2026-07-17T02:00:00Z", docs_root=tmp_path / "docs"
+    )
+    history_issues = cc.run(
+        coord,
+        now="2026-07-17T02:00:00Z",
+        docs_root=tmp_path / "docs",
+        history=True,
+    )
 
     unread = [
         issue.message
-        for issue in issues
+        for issue in history_issues
         if issue.kind == "unread" and "operator:" in issue.message
     ]
+    assert not [issue for issue in current_issues if issue.kind == "unread"]
     assert unread == ["operator: 1 unread event(s) via mailbox-fallback"]
-    assert not [issue for issue in issues if issue.kind == "transport_incoherent"]
+    assert not [
+        issue for issue in history_issues if issue.kind == "transport_incoherent"
+    ]
 
 
 def test_review_projection_failure_is_not_an_empty_pending_queue(
@@ -760,7 +781,12 @@ def test_new_invalid_current_verify_request_is_fatal(tmp_path: Path) -> None:
     _git(tmp_path, "add", ".")
     _git(tmp_path, "commit", "-q", "-m", "invalid request")
 
-    issues = cc.run(coord, now="2026-07-25T06:01:00Z", docs_root=tmp_path / "docs")
+    issues = cc.run(
+        coord,
+        now="2026-07-25T06:01:00Z",
+        docs_root=tmp_path / "docs",
+        history=True,
+    )
 
     invalid = [issue for issue in issues if issue.kind == "invalid_current_verify_request"]
     assert len(invalid) == 1
@@ -2089,6 +2115,27 @@ def test_exact_history_exception_surfaces_advisory_and_preserves_fail(
         for issue in issues
         if issue.kind == "grandfathered_review_history"
     ] == [("grandfathered_review_history", "ADVISORY")]
+
+
+def test_live_repo_defaults_to_current_diagnostics_and_history_is_explicit(
+    repo_root: Path,
+) -> None:
+    current = cc.run(
+        repo_root / "coordination", docs_root=repo_root / "docs"
+    )
+    history = cc.run(
+        repo_root / "coordination",
+        docs_root=repo_root / "docs",
+        history=True,
+    )
+
+    retired_kinds = {
+        "grandfathered_review_history",
+        "failed_current_verify_request",
+        "unread",
+    }
+    assert not [issue for issue in current if issue.kind in retired_kinds]
+    assert {issue.kind for issue in history} & retired_kinds
 
 
 def _rewrite_exception_and_companion_for_current_report(

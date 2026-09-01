@@ -13,9 +13,6 @@ from typing import Optional
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 
-import protocol_mailbox  # noqa: E402
-import codex_protocol_model  # noqa: E402
-import git_commit_projection  # noqa: E402
 import git_runner  # noqa: E402
 from status_desktop import (  # noqa: E402
     collect_desktop_readiness,
@@ -58,103 +55,10 @@ def collect_git(repo_root: Path) -> dict:
     }
 
 
-def _review_event_identity(
-    path: str,
-) -> tuple[str, str, str] | None:
-    if Path(path).parent.as_posix() != "coordination/mailbox/sent":
-        return None
-    match = protocol_mailbox.EVENT_NAME_RE.fullmatch(Path(path).name)
-    if match is None:
-        return None
-    return match.group("sender"), match.group("recipient"), match.group("kind")
-
-
 def _live_review_state(review_state: object, projection: object) -> object:
-    """Keep formal artifacts strictly after current model-policy admission.
-
-    The full review projection remains the historical view.  Desktop status
-    uses this narrower slice so an old failure is not promoted into a current
-    blocker, while a genuinely new author/reviewer request remains visible.
-    """
-
+    """Compatibility wrapper for the shared current-review filter."""
     import check_coordination  # type: ignore
-
-    cutover = codex_protocol_model.CURRENT_REVIEW_FAMILY_CUTOVER
-    commits = projection.commits
-
-    def epoch(commit: str | None, label: str) -> tuple[str, str | None]:
-        if commit is None:
-            return "problem", f"{label} has no introduction commit"
-        try:
-            commits.require_commit(cutover, "formal-review live cutover")
-            commits.require_commit(commit, label)
-            if commit == cutover or commits.is_ancestor(commit, cutover):
-                return "history", None
-            if commits.is_ancestor(cutover, commit):
-                return "live", None
-        except git_commit_projection.CommitGraphProjectionError as exc:
-            return "problem", f"{label} cannot be classified: {exc}"
-        return "problem", f"{label} is unrelated to the formal-review cutover"
-
-    problems: list[str] = []
-    if review_state.problem:
-        problems.append(review_state.problem)
-    pending = []
-    for request in review_state.pending:
-        classification, problem = epoch(request.commit, "verify-request commit")
-        if problem is not None:
-            problems.append(problem)
-            continue
-        if classification != "live":
-            continue
-        identity = _review_event_identity(request.path)
-        if (
-            identity is not None
-            and protocol_mailbox.formal_review_route_problem(
-                identity[2], identity[0], identity[1]
-            ) is None
-            and request.assigned_operator == identity[1]
-        ):
-            pending.append(request)
-
-    failed = []
-    for item in review_state.failed:
-        request_epoch, request_problem = epoch(
-            item.request_commit, "failed-review request commit"
-        )
-        report_epoch, report_problem = epoch(
-            item.report_commit, "failed-review report commit"
-        )
-        for problem in (request_problem, report_problem):
-            if problem is not None:
-                problems.append(problem)
-        if request_problem is not None or report_problem is not None:
-            continue
-        if request_epoch != "live" or report_epoch != "live":
-            continue
-        request_identity = _review_event_identity(item.request_path)
-        report_identity = _review_event_identity(item.report_path)
-        if (
-            request_identity is not None
-            and report_identity is not None
-            and protocol_mailbox.formal_review_route_problem(
-                request_identity[2], request_identity[0], request_identity[1]
-            ) is None
-            and protocol_mailbox.formal_review_route_problem(
-                report_identity[2], report_identity[0], report_identity[1]
-            ) is None
-            and item.assigned_operator == request_identity[1]
-            and report_identity[0] == request_identity[1]
-            and report_identity[1] in {request_identity[0], "all"}
-        ):
-            failed.append(item)
-
-    return check_coordination.VerifyReviewState(
-        pending=tuple(pending),
-        failed=tuple(failed),
-        problem="; ".join(dict.fromkeys(problems)) if problems else None,
-        grandfathered_history=(),
-    )
+    return check_coordination.live_verify_review_state(review_state, projection)
 
 
 def _collect_review_state(

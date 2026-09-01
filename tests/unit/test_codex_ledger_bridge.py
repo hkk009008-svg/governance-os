@@ -160,8 +160,8 @@ def test_protocol_doctor_derives_verification_commands_from_model():
         assert selector not in flattened
 
 
-def test_protocol_doctor_runs_one_unconditional_read_only_set(monkeypatch):
-    """The doctor is a fixed read-only bundle: no capacity board, no flags."""
+def test_protocol_doctor_defaults_current_and_makes_history_explicit(monkeypatch):
+    """The ordinary doctor omits retired lineage checks."""
 
     commands: list[list[str]] = []
 
@@ -175,9 +175,15 @@ def test_protocol_doctor_runs_one_unconditional_read_only_set(monkeypatch):
     rendered = [" ".join(command) for command in commands]
     assert any("check_coordination.py" in line for line in rendered)
     assert any("target_binding.py --check" in line for line in rendered)
-    assert any("route_lineage.py --check" in line for line in rendered)
+    assert not any("route_lineage.py --check" in line for line in rendered)
     assert not any("capacity" in line for line in rendered)
     assert not any("--require-packets" in line for line in rendered)
+
+    commands.clear()
+    assert doctor.main(["--history"]) == 0
+    rendered = [" ".join(command) for command in commands]
+    assert any("check_coordination.py --history" in line for line in rendered)
+    assert any("route_lineage.py --check" in line for line in rendered)
 
 
 def test_ledger_bridge_doc_exists_and_names_required_boundaries():

@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""Coordination-state linter — protocol v6.0.
+"""Desktop-team coordination-state linter.
 
-Machine-checks the director↔operator coordination invariants that previously
-lived only in seat discipline and drifted (the 2026-06-10 three-way cursor
-divergence: seen/*.txt vs event footers vs commit messages). Mirrors the
-check_doc_claims.py verifier pattern.
+The default view checks immutable mailbox integrity and current formal-review
+state.  ``--history`` additionally renders retired cursor, unread, handoff,
+and pre-cutover review diagnostics without changing the archived evidence.
 
 Public API
 ----------
@@ -19,11 +18,7 @@ FATAL    — structurally broken state (unparseable/future cursor, filename
            convention violation, self-addressed event). Exit-code-affecting.
 ADVISORY — drift that needs a human eye but doesn't break the machinery
            (orphan cursor, missing/mismatched **When:** envelope, novel kind).
-INFO     — unread-count report (always emitted, never a failure).
-
-Also hard-fails coordinator "All-Seat Handoff" artifacts that do not cite real
-live-seat mailbox/handoff artifacts for all four seats. Subagent reports are
-advisory evidence, not live-seat protocol authority.
+INFO     — historical unread-count report (never a failure).
 
 The envelope checks are gated on --since (default 2026-06-11, the v6.0
 adoption date): pre-adoption events used a YAML-frontmatter format and are
@@ -147,6 +142,100 @@ class VerifyReviewState:
     failed: tuple[FailedVerifyRequest, ...]
     problem: str | None = None
     grandfathered_history: tuple[str, ...] = ()
+
+
+def _review_event_identity(path: str) -> tuple[str, str, str] | None:
+    if Path(path).parent.as_posix() != "coordination/mailbox/sent":
+        return None
+    match = protocol_mailbox.EVENT_NAME_RE.fullmatch(Path(path).name)
+    if match is None:
+        return None
+    return match.group("sender"), match.group("recipient"), match.group("kind")
+
+
+def live_verify_review_state(
+    review_state: VerifyReviewState,
+    projection: "CommittedMailboxProjection",
+) -> VerifyReviewState:
+    """Return only formal artifacts from the current desktop-review epoch."""
+
+    cutover = codex_protocol_model.CURRENT_REVIEW_FAMILY_CUTOVER
+    commits = projection.commits
+
+    def epoch(commit: str | None, label: str) -> tuple[str, str | None]:
+        if commit is None:
+            return "problem", f"{label} has no introduction commit"
+        try:
+            commits.require_commit(cutover, "formal-review live cutover")
+            commits.require_commit(commit, label)
+            if commit == cutover or commits.is_ancestor(commit, cutover):
+                return "history", None
+            if commits.is_ancestor(cutover, commit):
+                return "live", None
+        except git_commit_projection.CommitGraphProjectionError as exc:
+            return "problem", f"{label} cannot be classified: {exc}"
+        return "problem", f"{label} is unrelated to the formal-review cutover"
+
+    problems = [review_state.problem] if review_state.problem else []
+    pending: list[CurrentVerifyRequest] = []
+    for request in review_state.pending:
+        classification, problem = epoch(request.commit, "verify-request commit")
+        if problem is not None:
+            problems.append(problem)
+            continue
+        if classification != "live":
+            continue
+        if not request.valid:
+            pending.append(request)
+            continue
+        identity = _review_event_identity(request.path)
+        if (
+            identity is not None
+            and protocol_mailbox.formal_review_route_problem(
+                identity[2], identity[0], identity[1]
+            ) is None
+            and request.assigned_operator == identity[1]
+        ):
+            pending.append(request)
+
+    failed: list[FailedVerifyRequest] = []
+    for item in review_state.failed:
+        request_epoch, request_problem = epoch(
+            item.request_commit, "failed-review request commit"
+        )
+        report_epoch, report_problem = epoch(
+            item.report_commit, "failed-review report commit"
+        )
+        for problem in (request_problem, report_problem):
+            if problem is not None:
+                problems.append(problem)
+        if request_problem is not None or report_problem is not None:
+            continue
+        if request_epoch != "live" or report_epoch != "live":
+            continue
+        request_identity = _review_event_identity(item.request_path)
+        report_identity = _review_event_identity(item.report_path)
+        if (
+            request_identity is not None
+            and report_identity is not None
+            and protocol_mailbox.formal_review_route_problem(
+                request_identity[2], request_identity[0], request_identity[1]
+            ) is None
+            and protocol_mailbox.formal_review_route_problem(
+                report_identity[2], report_identity[0], report_identity[1]
+            ) is None
+            and item.assigned_operator == request_identity[1]
+            and report_identity[0] == request_identity[1]
+            and report_identity[1] in {request_identity[0], "all"}
+        ):
+            failed.append(item)
+
+    return VerifyReviewState(
+        pending=tuple(pending),
+        failed=tuple(failed),
+        problem="; ".join(dict.fromkeys(problems)) if problems else None,
+        grandfathered_history=(),
+    )
 
 
 @dataclass(frozen=True)
@@ -1810,13 +1899,15 @@ def run(coord_root: Path | str, since: str = "2026-06-11",
         review_state: VerifyReviewState | None = None,
         committed_projection: tuple[
             CommittedMailboxProjection | None, str | None
-        ] | None = None) -> list[CoordIssue]:
+        ] | None = None,
+        history: bool = False) -> list[CoordIssue]:
     coord_root = Path(coord_root).resolve()
     if now is None:
         now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     names = _event_names(coord_root)
     issues: list[CoordIssue] = []
-    issues += _check_cursors(coord_root, now, names)
+    if history:
+        issues += _check_cursors(coord_root, now, names)
     issues += _check_events(coord_root, since, names)
     # The bus lives at the git repo root; coord_root is <repo>/coordination, so its
     # parent is the repo root unless an explicit git_root is given (ADR-062).
@@ -1830,7 +1921,15 @@ def run(coord_root: Path | str, since: str = "2026-06-11",
             coord_root,
             projection_result=projection_result,
         )
-    issues += _unread_report(coord_root, names, bus_repo_root)
+    if (
+        not history
+        and review_state is not None
+        and projection_result is not None
+        and projection_result[0] is not None
+    ):
+        review_state = live_verify_review_state(review_state, projection_result[0])
+    if history:
+        issues += _unread_report(coord_root, names, bus_repo_root)
     issues += _check_current_verify_requests(
         bus_repo_root, coord_root, review_state=review_state
     )
@@ -1849,9 +1948,10 @@ def run(coord_root: Path | str, since: str = "2026-06-11",
                 projection, CoordIssue, _ARCHIVE_SENT_PREFIX,
                 _projection_git, bus_repo_root,
             )
-    if git_root is not None:
+    if history and git_root is not None:
         issues += _check_standalone_cursor_commits(git_root)
-    issues += _check_coordinator_handoff_theater(docs_root)
+    if history:
+        issues += _check_coordinator_handoff_theater(docs_root)
     if projection_result is not None and projection_result[0] is not None:
         try:
             projection_result[0].commits.assert_current()
@@ -1874,14 +1974,18 @@ def main(argv=None) -> int:
                     help="envelope checks apply to events on/after this date")
     ap.add_argument("--now", default=None, help=argparse.SUPPRESS)  # test aid
     ap.add_argument("--git-root", default=None,
-                    help="repo root; when given, ADVISORY-flag standalone cursor-only "
-                         "commits in recent history (lever #5). Omitted = skipped.")
+                    help="repo root for --history cursor-only commit diagnostics")
     ap.add_argument("--docs-root", default=str(repo_root / "docs"),
-                    help="docs/ directory for coordinator handoff protocol checks")
+                    help="docs/ directory for --history handoff diagnostics")
+    ap.add_argument(
+        "--history",
+        action="store_true",
+        help="include retired cursor, unread, handoff, and pre-cutover review diagnostics",
+    )
     args = ap.parse_args(argv)
 
     issues = run(args.root, since=args.since, now=args.now, git_root=args.git_root,
-                 docs_root=args.docs_root)
+                 docs_root=args.docs_root, history=args.history)
     fatal = [i for i in issues if i.severity == "FATAL"]
     advisory = [i for i in issues if i.severity == "ADVISORY"]
     for i in issues:

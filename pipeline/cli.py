@@ -53,7 +53,7 @@ _MODULE_COMMANDS: dict[tuple[str | None, ...], tuple[str, str, str]] = {
     ("learn", "draft"): ("learning_extract", "main", "draft one learning candidate into scratch"),
     ("checkpoint",): ("draft_checkpoint", "main", "draft one continuity checkpoint into scratch"),
     ("claim",): ("claim_check", "main", "derive the premises a claim's shape demands"),
-    ("doctor",): ("protocol_doctor", "main", "read-only protocol validation bundle"),
+    ("doctor",): ("protocol_doctor", "main", "current desktop-team validation bundle"),
     ("preflight",): ("harness_preflight", "main", "desktop-app integration preflight"),
     ("target",): ("target_binding", "main", "resolve or check the product target binding"),
 }
