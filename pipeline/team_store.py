@@ -134,7 +134,11 @@ def _validate_store_path(common_dir: Path, store: Path) -> tuple[int, int]:
             not stat.S_ISREG(sidecar_info.st_mode)
             or stat.S_ISLNK(sidecar_info.st_mode)
             or sidecar_info.st_uid != os.geteuid()
-            or sidecar_info.st_nlink != 1
+            # SQLite removes WAL/SHM files when the final connection closes.
+            # On Darwin, lstat can race that unlink and return a snapshot with
+            # zero links. The file is already unreachable and therefore safe;
+            # two or more links still indicate a real hard-link violation.
+            or sidecar_info.st_nlink > 1
             or stat.S_IMODE(sidecar_info.st_mode) & 0o077
         ):
             raise TeamError(f"team store {suffix[1:]} sidecar must be owner-only")
@@ -153,13 +157,16 @@ class Store:
         if observed != self._file_identity:
             raise TeamError("team store file was replaced after initialization")
         connection = sqlite3.connect(self.path, timeout=10)
-        observed_after_open = _validate_store_path(self.common_dir, self.path)
-        if observed_after_open != self._file_identity:
+        try:
+            observed_after_open = _validate_store_path(self.common_dir, self.path)
+            if observed_after_open != self._file_identity:
+                raise TeamError("team store file changed while opening")
+            connection.row_factory = sqlite3.Row
+            connection.execute("PRAGMA foreign_keys = ON")
+            connection.execute("PRAGMA busy_timeout = 10000")
+        except BaseException:
             connection.close()
-            raise TeamError("team store file changed while opening")
-        connection.row_factory = sqlite3.Row
-        connection.execute("PRAGMA foreign_keys = ON")
-        connection.execute("PRAGMA busy_timeout = 10000")
+            raise
         return connection
 
     @contextmanager

@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import sqlite3
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -60,6 +61,60 @@ def test_store_path_is_revalidated_before_every_open(tmp_path: Path) -> None:
 
     with pytest.raises(team.TeamError, match="regular file"):
         member.send("claude", "must not escape", idempotency_key="escape")
+
+
+def test_unlinked_sidecar_snapshot_is_a_safe_close_race(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = make_repo(tmp_path / "repo")
+    member = team.Team(repo, "codex")
+    sidecar = Path(f"{member.store_path}-shm")
+    sidecar.write_bytes(b"")
+    sidecar.chmod(0o600)
+    real_lstat = Path.lstat
+
+    def lstat_during_unlink(path: Path):
+        observed = real_lstat(path)
+        if path == sidecar:
+            return SimpleNamespace(
+                st_mode=observed.st_mode,
+                st_uid=observed.st_uid,
+                st_nlink=0,
+            )
+        return observed
+
+    monkeypatch.setattr(Path, "lstat", lstat_during_unlink)
+
+    assert team_store._validate_store_path(member.common_dir, member.store_path)
+
+
+def test_failed_post_open_validation_closes_connection(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    member = team.Team(make_repo(tmp_path / "repo"), "codex")
+    calls = 0
+
+    def fail_after_open(_common: Path, _store: Path) -> tuple[int, int]:
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise team.TeamError("post-open failure")
+        return member.store._file_identity
+
+    class FakeConnection:
+        closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    connection = FakeConnection()
+    monkeypatch.setattr(team_store, "_validate_store_path", fail_after_open)
+    monkeypatch.setattr(team_store.sqlite3, "connect", lambda *_a, **_k: connection)
+
+    with pytest.raises(team.TeamError, match="post-open failure"):
+        member.store.connect()
+
+    assert connection.closed is True
 
 
 def test_store_schema_and_compatibility_trigger_bound_json_message_ids(
