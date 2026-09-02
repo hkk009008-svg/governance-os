@@ -1,73 +1,23 @@
 ---
-name: "create-regression-pin"
-description: "Author a strict-xfail regression pin for a confirmed-but-deferred defect (R-VERIFY-TIER B), with the two recurring traps \u2014 assertion-shape and non-vacuous flip \u2014 as built-in checks. Use when an agent-confirmed code defect is being left unfixed this session."
+name: create-regression-pin
+description: Add a strict xfail for a confirmed defect that is deliberately deferred, and prove the pin fails for that defect.
 ---
 
-# Create a Regression Pin (strict-xfail)
+# Create a regression pin
 
-## When
-R-VERIFY-TIER(B): an agent-confirmed defect you are NOT fixing this session
-must ship a `pytest.mark.xfail(strict=True, reason=...)` pin in the same
-session — so CI, not the next session's agents, re-verifies it. (Or label it
-`test-infeasible` with a one-line reason in the task evidence.)
+Use this only when a confirmed defect will remain unfixed in the current task.
+Prefer fixing an in-scope defect over pinning it.
 
-Codex has no skill-level equivalent of Claude's `disable-model-invocation`;
-use this as procedural guidance in the active session, not as a delegation
-trigger for a separate model run.
+Write a test for the correct post-fix behavior and mark it
+`pytest.mark.xfail(strict=True, reason="<defect>: <reason>")`. Match the
+assertion to the intended fix: if the fix should return safely, assert that
+return; if it should block, assert the block.
 
-## The pin (shape)
-```python
-@pytest.mark.xfail(strict=True, reason="<defect-id>: <one line>; see docs/REMEDIATION-INVENTORY.md")
-def test_<defect_id>_regression():
-    # Assert the CORRECT (post-fix) behavior. strict=True means:
-    #   defect present -> test fails  -> xfail  (expected)   -> suite stays green
-    #   defect fixed   -> test passes -> XPASS  (unexpected) -> suite goes RED -> remove the pin
-    ...
-```
+Prove the pin is useful:
 
-## Trap 1 — assertion shape must match how the fix will land
-The pin's assertion dictates what "fixed" looks like. If the real fix will make
-a **direct call return safely** (not raise), a pin written with
-`pytest.raises(...)` will never flip to XPASS even after the fix — it keeps
-passing as xfail forever. Match the assertion to the fix's contract:
-- fix = "stop raising / return safe value" -> assert the safe return (no `pytest.raises`)
-- fix = "start raising / start blocking"   -> `pytest.raises` / assert the block
-- fix = "coerce non-finite -> 0.0 + WARN, keep gate alive" -> assert the coerced
-  value AND that the gate still runs (not that it blocks)
+1. Run the test with `--runxfail`; it must fail because of the defect, not setup.
+2. Run it normally; it must report xfailed, never xpassed or skipped.
+3. Record the test path and the one-line reason in the task result.
 
-## Trap 2 — prove the pin is non-vacuous
-A pin that never actually exercises the defect is invisible-green theater.
-Before you trust it:
-- Run `coordination/bin/pipeline-python -m pytest <file> --runxfail -q` from
-  the active development environment and selected native worktree, and confirm
-  it goes **RED** against the current (unfixed) code — that proves the
-  assertion really catches the defect.
-- Confirm the failure reason is the defect, not a setup error / import skip /
-  `importorskip` swallow.
-- Confirm it would flip to XPASS once the fix lands (the assertion is the
-  post-fix contract from Trap 1).
-
-## Steps
-1. Locate the defect row in `docs/REMEDIATION-INVENTORY.md`; get its id + severity.
-2. Write the test asserting post-fix behavior (Trap 1).
-3. Add the `xfail(strict=True, reason=…)` decorator citing the defect id.
-4. Run `--runxfail` and confirm RED + correct reason (Trap 2).
-5. Run the normal suite slice and confirm it reports `xfailed` (not `xpassed`,
-   not `error`).
-6. Update the inventory row to note the pin (`file::test_name`).
-7. Commit with explicit pathspec (`-m` before `--`) and the git-hygiene prefix
-   on the shared tree. This pins a DEFERRED defect — it does NOT substitute for
-   per-commit production verification of a fix you DID land.
-
-## When a pin is infeasible
-If the defect cannot be expressed as a runtime test (needs a live GPU compute pod / paid
-external API / non-deterministic output), label it `test-infeasible` with a one-line
-reason in the task evidence instead of forcing a vacuous pin.
-## Rule maintenance
-Observed failure: deferred defects shipping without a strict-xfail pin, or
-pins whose assertion never flips (vacuous xfail).
-Mode/risk: ordinary local when pinning; the deferred defect's risk class is
-unchanged. Cost: one xfail test plus a `--runxfail` red proof.
-Owner: the app member deferring the defect. Re-evaluate: if two consecutive
-deferred defects ship without a pin or with a pin that stays xfail after
-the fix.
+If the behavior cannot be exercised without unavailable hardware, paid access,
+or nondeterministic external state, record `test-infeasible` and the reason.

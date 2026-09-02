@@ -16,11 +16,8 @@ schema_version = 1
 [review_admission]
 # Desktop-team membership is not review admission. Current high-risk review
 # remains closed to the Claude and GPT model families; AGY/Gemini may advise and
-# collaborate through the team adapter but cannot satisfy the formal
-# different-family requirement. Any explicitly current desktop model may
-# author a candidate; only the Claude/GPT reviewer list may issue the accepting
-# verdict. Family membership alone is insufficient. The wider registry remains
-# parseable for advisory output and immutable historical artifacts.
+# collaborate through the team adapter but cannot issue the formal verdict.
+# Any listed desktop model may author; only listed Claude/GPT models may review.
 active_families = ["claude", "gpt"]
 active_author_models = [
     "claude-opus-5",
@@ -64,11 +61,6 @@ active_reviewer_models = [
     "gpt-5.4-mini",
     "gpt-5.3-codex-spark",
 ]
-# Every report already committed when explicit current-ID admission was added
-# remains readable under the family rule that governed it. Reports introduced
-# after this boundary must use the author/reviewer lists above.
-historical_cutover = "b1390a244d2368e89bb65d65a148e55bac0d8df0"
-
 [provider_prefixes]
 "anthropic-" = "claude"
 "openai-" = "gpt"

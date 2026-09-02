@@ -1,16 +1,7 @@
 ---
 name: create-regression-pin
-description: Author a strict-xfail regression pin for a confirmed-but-deferred defect (R-VERIFY-TIER B), with the two recurring traps — assertion-shape and non-vacuous flip — as built-in checks. Use when an agent-confirmed code defect is being left unfixed this session.
+description: Add a strict xfail for a confirmed defect that is deliberately deferred, and prove the pin fails for that defect.
 disable-model-invocation: true
 ---
 
-# Create a Regression Pin (strict-xfail)
-
-The canonical body of this skill is `.agents/skills/create-regression-pin/SKILL.md`
-(repo-relative). Read that file now and follow it exactly as if its content
-were written here.
-
-Claude-native deltas when executing it: prefix git with `env -u GIT_INDEX_FILE`,
-and run Python and pytest as `coordination/bin/pipeline-python` after a
-preceding `unset GIT_INDEX_FILE` line — not behind an `env -u` prefix, which
-Claude's Bash tool refuses once the command takes options.
+Read and follow `.agents/skills/create-regression-pin/SKILL.md`.

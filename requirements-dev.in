@@ -1,3 +1,2 @@
 # Full local/CI test dependencies.
-hypothesis==6.165.0
 pytest==9.1.1

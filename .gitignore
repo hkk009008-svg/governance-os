@@ -1,104 +1,35 @@
-# =============================================================================
-# Python
-# =============================================================================
 __pycache__/
 *.py[cod]
-*.pyo
-*.pyd
-.Python
 *.egg-info/
-dist/
-build/
-.eggs/
-*.egg
 .venv/
 venv/
-env/
+dist/
+build/
 
-# Coverage
 .coverage
 coverage.xml
 htmlcov/
+.pytest_cache/
+.pytest-verify-tmp/
 
-# =============================================================================
-# macOS
-# =============================================================================
 .DS_Store
 .AppleDouble
 .LSOverride
-
-# =============================================================================
-# Editor / IDE
-# =============================================================================
 .idea/
 .vscode/
 *.swp
 *.swo
 
-# =============================================================================
-# Pipeline coordination runtime state
-# These paths hold ephemeral session state that must not be committed.
-# The !.gitkeep rules ensure scaffolding directories persist in the repo.
-# =============================================================================
-
-# Historical seat read-cursors are tracked evidence rather than runtime ignores.
-
-# Outgoing mailbox messages (runtime-generated; committed selectively per protocol)
-coordination/mailbox/sent/*
-!coordination/mailbox/sent/.gitkeep
-
-# Heartbeat presence files (volatile; regenerated each session)
-coordination/presence/*-heartbeat.ts
-
-# Cross-cutting edit locks (released on commit; never persistent)
-coordination/locks/*
-!coordination/locks/.gitkeep
-
-# Retired threeway event staging can linger in existing checkouts.
-coordination/threeway/events/*
-!coordination/threeway/events/.gitkeep
-
-# Retired launcher and hook state must remain untracked if locally present.
-.git/index-codex-*
-.claude/hooks/.last-index-sync-*
-STATE.md
-
-# =============================================================================
-# Secrets / keys
-# =============================================================================
-
-# Local .env overrides (the .env.example is committed; the live .env is not)
 .env
 .env.local
 .env.*.local
 
-# pytest
-.pytest_cache/
-.pytest-verify-tmp/
+# Formal artifacts are staged explicitly by the fixed writer.
+coordination/mailbox/sent/*
+!coordination/mailbox/sent/.gitkeep
 
-# Subagent-driven-development scratch ledger (skill-owned, never committed)
-.superpowers/
-
-# Project-local git worktrees (created for isolated implementation runs)
+# Local worktrees and app-local state.
 .worktrees/
-
-# Claude Code session worktrees. Each one is a full second checkout of this
-# repo, so without a committed rule a fresh clone reports thousands of
-# untracked duplicates and filesystem-walking tools (tests, linters, doc
-# scanners) sweep them. A machine-local .git/info/exclude entry is never
-# cloned, so the rule has to live here.
 .claude/worktrees/
 .claude/settings.local.json
-
-# Local ChatGPT Pro consultation lifecycle metadata; never prompt/response content.
-.codex/runtime/chatgpt-pro-consultations.json
-.codex/runtime/chatgpt-pro-consultations.json.lock
-.codex/runtime/opus-review-receipts/
-.codex/runtime/lane-v-report-publications/
-
-# Retired Claude hook files can linger locally and are never active source.
-.claude/hooks/
-
-# Learning-plane episodic index: derived, rebuildable, workspace-scope
-# projection with no authority (ADR-067); never committed.
-coordination/learning/
+.codex/runtime/

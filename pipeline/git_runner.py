@@ -23,9 +23,8 @@ Both modes pin repository discovery to the requested root via
 ``GIT_CEILING_DIRECTORIES``: a root that is not itself a repository (or a
 linked worktree) answers "not a repository" instead of escaping upward.
 
-The two strictest existing seams — ``pipeline/mailbox_writer.py`` and
-``pipeline/git_commit_projection.py`` — keep their own proven fixed
-environments; this module unifies everything that was weaker than them.
+The formal writer has additional index-safety checks of its own; this module
+provides the shared subprocess environment for all repository Git calls.
 """
 
 from __future__ import annotations

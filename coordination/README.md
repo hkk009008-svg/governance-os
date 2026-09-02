@@ -1,104 +1,19 @@
-# Coordination history and formal-review compatibility
+# Coordination state
 
-Routine Codex, Claude, and AGY dialogue does not use this directory. The three
-desktop apps communicate through the repository-scoped `pipeline-team` MCP
-adapter. Its SQLite store lives under the Git common directory, outside the
-tracked worktree, and is initialized only when an app adapter starts.
+Routine Codex, Claude, and AGY messages use the local `pipeline-team` SQLite
+transport, not Git. The database lives under the repository's Git common
+directory so linked worktrees share it.
 
-Use the app tools for normal collaboration:
+This tracked directory has one active purpose:
 
-- `team_status` observes member activity and pending messages;
-- `team_send` queues one scoped message and requires a non-empty sender-scoped
-  `idempotency_key`, reusable only for identical content;
-- `team_wait` returns messages to one app and records tool delivery.
+- `mailbox/kinds.txt` lists the two formal artifact kinds.
+- `mailbox/sent/` contains current `verify-request` and
+  `verification-report` files written by `bin/pipeline mail send`.
 
-These are deliberately different states. A queued message is not delivered, a
-delivery receipt is not a reply, and a reply is not a formal verdict or effect
-authority. Message text never grants merge, spend, release, live-data, or other
-external-effect authority.
+The author publishes a request for one exact committed range. A non-author
+Codex or Claude reviewer publishes one bound GO, NITS, or FAIL report. High-risk
+requests carry abuse-class bullets and reports bind that assessment. Git
+history preserves earlier artifacts; they are not replayed as current state.
 
-## Status and readiness
-
-```bash
-bin/pipeline status                 # compact desktop-team orientation
-bin/pipeline status --json          # the same object for tooling
-bin/pipeline preflight              # app, project-config, and live MCP handshakes
-```
-
-`bin/pipeline status` is observational. It checks installed app metadata and
-project configuration without launching a model or adapter. If a team database
-already exists, status opens it read-only; it never creates the database,
-registers a member, updates `last_seen`, delivers a message, or marks a reply.
-
-The full preflight is the explicit live check. It performs bounded MCP
-initialize handshakes but still sends no team message and launches no model.
-
-## What remains here
-
-- `mailbox/sent/` is immutable historical evidence plus the fixed carrier for
-  exact formal-review artifacts, real checkpoints, and the governed
-  learning-candidate/disposition lifecycle.
-- `mailbox/kinds.txt` keeps historical event kinds parseable.
-- `mailbox/seen/` contains retired cursor state. It is not a live desktop-team
-  queue.
-- `capacity/`, `presence/`, and `verification/` are retained historical
-  records. They do not define current membership, liveness, ownership, or
-  authority.
-- `peer/` contains old one-shot CLI receipts. A receipt is historical process
-  evidence, not desktop delivery, model identity, or review authority.
-- `bin/send-event` remains the fixed durable-event writer for those three uses.
-  Retired cursor and lock files remain evidence, not executable controls. No
-  provider-launch helper remains.
-
-For historical diagnosis, inspect the committed files and Git history directly.
-`bin/pipeline status` intentionally reports only the live desktop team; no current
-Codex, Claude, or AGY app consumes a retired mailbox cursor.
-
-## Formal review only
-
-Ordinary reversible local work needs no mailbox event. Use a formal pair only
-when risk requires an independently reviewable exact committed range:
-
-1. The task-local author publishes one `verify-request` with exact base, head,
-   repository, assigned reviewer, model family, and risk class.
-2. A non-author reviewer inspects the actual committed diff and publishes one
-   bound `verification-report` with GO, NITS, or FAIL.
-3. High-risk control changes additionally require different-model-family review
-   and explicit abuse-class analysis.
-
-The executable grammar lives in `pipeline/codex_protocol_model.py` and
-`pipeline/compact_pair_loop.py`. New formal events go through:
-
-```bash
-bin/pipeline mail send author reviewer verify-request <subject>
-bin/pipeline mail send reviewer author verification-report <subject>
-```
-
-The retired identities (`director`, `director2`, `operator`, `operator2`,
-`coordinator`, `coordinator2`) remain readable only so committed history does
-not become unparsable. They are not desktop-team members and cannot publish new
-events.
-
-The third active writer use is the governed learning lifecycle: a typed
-`learning-candidate` records immutable advisory input, and a typed `decision`
-records its disposition. Both go through the same publication finalizer and
-grant no role, verdict, or authority. See `docs/protocol/learning/contract.md`.
-
-## Historical event envelope
-
-Current compatibility events use the H1 envelope generated by `send-event`:
-
-```markdown
-# Author → Reviewer: <subject>
-
-**When:** 2026-08-27T00:00:00Z · **From:** author (online)
-
-<kind-specific formal body>
-
-Cursor at send: cursorless
-```
-
-Older committed formats and kinds remain parseable but must not be copied into
-new work. Git history is the archive; do not manufacture new handoff, capacity,
-presence, acknowledgement, convergence, or cursor artifacts for routine app
-collaboration.
+Do not put routine chat, plans, handoffs, cursors, presence files, capacity
+packets, or role assignments here.
