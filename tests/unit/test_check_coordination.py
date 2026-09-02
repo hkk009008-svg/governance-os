@@ -645,6 +645,9 @@ def test_scalar_cursor_without_bus_reports_mailbox_fallback_unread(
     assert not [
         issue for issue in history_issues if issue.kind == "transport_incoherent"
     ]
+    (coord / "mailbox" / "seen" / "operator.txt").write_text("999\n")
+    assert "transport_incoherent" in {issue.kind for issue in cc.run(
+        coord, now="2026-07-17T02:00:00Z", docs_root=tmp_path / "docs")}
 
 
 def test_review_projection_failure_is_not_an_empty_pending_queue(

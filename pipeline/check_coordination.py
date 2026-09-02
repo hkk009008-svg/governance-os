@@ -1913,8 +1913,8 @@ def run(coord_root: Path | str, since: str = "2026-06-11",
         and projection_result[0] is not None
     ):
         review_state = live_verify_review_state(review_state, projection_result[0])
-    if history:
-        issues += _unread_report(coord_root, names, bus_repo_root)
+    unread = _unread_report(coord_root, names, bus_repo_root)
+    issues += unread if history else [issue for issue in unread if issue.kind != "unread"]
     issues += _check_current_verify_requests(
         bus_repo_root, coord_root, review_state=review_state
     )
