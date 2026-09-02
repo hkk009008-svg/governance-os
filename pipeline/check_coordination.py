@@ -162,16 +162,13 @@ def live_verify_review_state(
     cutover = codex_protocol_model.CURRENT_REVIEW_FAMILY_CUTOVER
     commits = projection.commits
     problems = [review_state.problem] if review_state.problem else []
-    try:
-        commits.require_commit(cutover, "formal-review live cutover")
-    except git_commit_projection.CommitGraphProjectionError as exc:
-        problems.append(f"formal-review live cutover cannot be classified: {exc}")
 
     def live(commit: str | None, label: str) -> bool:
         if commit is None:
             problems.append(f"{label} has no introduction commit")
             return False
         try:
+            commits.require_commit(cutover, "formal-review live cutover")
             commits.require_commit(commit, label)
             if commits.is_ancestor(commit, cutover):
                 return False
