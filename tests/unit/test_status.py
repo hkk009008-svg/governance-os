@@ -133,6 +133,16 @@ def test_live_review_filter_keeps_only_post_cutover_formal_artifacts() -> None:
     old, live = request("2026-08-20T12-00-00Z", historical), request(
         "2026-08-27T12-00-00Z", request_commit
     )
+    invalid_live = cc.CurrentVerifyRequest(
+        path=(
+            "coordination/mailbox/sent/"
+            "2026-08-27T12-05-00Z-coordinator-to-operator-verify-request.md"
+        ),
+        commit=request_commit,
+        assigned_operator="operator",
+        valid=False,
+        problem="retired route used after cutover",
+    )
     old_fail = cc.FailedVerifyRequest(
         old.path, historical,
         "coordination/mailbox/sent/2026-08-20T12-10-00Z-claude-to-all-verification-report.md",
@@ -146,16 +156,23 @@ def test_live_review_filter_keeps_only_post_cutover_formal_artifacts() -> None:
 
     filtered = status._live_review_state(
         cc.VerifyReviewState(
-            pending=(old, live), failed=(old_fail, live_fail),
+            pending=(old, live, invalid_live), failed=(old_fail, live_fail),
             grandfathered_history=("fixture",),
         ),
         type("Projection", (), {"commits": Commits()})(),
     )
 
-    assert filtered.pending == (live,)
+    assert filtered.pending == (live, invalid_live)
     assert filtered.failed == (live_fail,)
     assert filtered.problem is None
     assert filtered.grandfathered_history == ()
+    assert filtered == cc.live_verify_review_state(
+        cc.VerifyReviewState(
+            pending=(old, live, invalid_live), failed=(old_fail, live_fail),
+            grandfathered_history=("fixture",),
+        ),
+        type("Projection", (), {"commits": Commits()})(),
+    )
 
 
 def test_default_snapshot_combines_live_sources(tmp_path: Path, monkeypatch) -> None:

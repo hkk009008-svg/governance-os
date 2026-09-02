@@ -82,6 +82,7 @@ Useful local commands:
 ```bash
 bin/pipeline --help
 bin/pipeline status
+bin/pipeline doctor
 bin/pipeline check --fast
 bin/pipeline check
 bin/pipeline check docs
@@ -89,6 +90,9 @@ bin/pipeline check arch
 ```
 
 These commands operate on the repository. None is a provider-launch command.
+The default doctor and coordination check report current desktop-team state.
+Use their `--history` option only for retired cursor, pre-cutover review, and
+route-lineage diagnostics.
 
 ## Review
 

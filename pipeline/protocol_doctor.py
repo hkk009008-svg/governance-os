@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Strict read-only protocol validation bundle."""
+"""Read-only current desktop-team validation bundle."""
 
 from __future__ import annotations
 
@@ -61,26 +61,41 @@ def verification_commands(python_executable: str) -> list[list[str]]:
     ]
 
 
-def base_commands(python_executable: str, wave: int) -> list[list[str]]:
-    """The unconditional read-only checks every doctor run performs."""
-    return [
-        [python_executable, "pipeline/check_coordination.py"],
+def base_commands(
+    python_executable: str, wave: int, *, history: bool = False
+) -> list[list[str]]:
+    """Return current checks, plus retired lineage diagnostics on request."""
+    coordination = [python_executable, "pipeline/check_coordination.py"]
+    commands = [
+        coordination,
         [python_executable, "pipeline/target_binding.py", "--check"],
-        [python_executable, "pipeline/route_lineage.py", "--check"],
     ]
+    if history:
+        coordination.append("--history")
+        commands.append(
+            [python_executable, "pipeline/route_lineage.py", "--check"]
+        )
+    return commands
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Run strict read-only protocol checks.")
+    parser = argparse.ArgumentParser(
+        description="Run read-only current desktop-team protocol checks."
+    )
     parser.add_argument("--root", default=str(ROOT))
     parser.add_argument(
         "--wave", type=int, default=0, help="retained for call compatibility; unused"
+    )
+    parser.add_argument(
+        "--history",
+        action="store_true",
+        help="also run retired coordination and route-lineage diagnostics",
     )
     args = parser.parse_args(argv)
 
     root = Path(args.root)
     py = _python()
-    commands = base_commands(py, args.wave)
+    commands = base_commands(py, args.wave, history=args.history)
     commands.extend(verification_commands(py))
 
     for cmd in commands:

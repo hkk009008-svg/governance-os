@@ -62,9 +62,14 @@ For local readiness and repository checks:
 ```bash
 bin/pipeline preflight
 bin/pipeline status
+bin/pipeline doctor
 bin/pipeline check --fast
 bin/pipeline check
 ```
+
+Ordinary diagnostics show current desktop-team state. Use the coordination
+check or doctor with `--history` only when investigating retired mailbox
+cursors, old formal-review state, or route lineage.
 
 `preflight` checks installed app bundles, all three app bindings (including
 AGY's workspace plugin manifest and MCP config), a real adapter handshake,

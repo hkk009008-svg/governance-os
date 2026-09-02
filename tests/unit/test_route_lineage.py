@@ -329,10 +329,12 @@ def test_check_cli_fails_on_forked_lineage(tmp_path, capsys):
     assert rc == 1 and "forked lineage" in out
 
 
-def test_protocol_doctor_base_commands_include_lineage_check():
+def test_protocol_doctor_history_commands_include_lineage_check():
     import protocol_doctor
 
-    commands = protocol_doctor.base_commands(python_executable="PY", wave=2)
+    commands = protocol_doctor.base_commands(
+        python_executable="PY", wave=2, history=True
+    )
     assert ["PY", "pipeline/route_lineage.py", "--check"] in commands
 
 

@@ -18,6 +18,8 @@ committed review at all. This gate closes exactly that gap and nothing more:
      NITS and whose bound request declares `high-risk-control`. Validation is
      delegated to the canonical `compact_pair_loop.validate_report`, which
      validates the report's declared non-author seat and model-family fields.
+     A two-parent merge inherits that report only when it is a byte-clean
+     landing of exactly Reviewed head -> request -> report onto Reviewed base.
      A current FAIL blocks until superseded; valid remediation carries the
      failed report's reviewed range forward instead of orphaning it.
      Repository bytes cannot attest which provider actually executed a review;
@@ -313,6 +315,42 @@ def _coverage_commits(
     return frozenset(commits)
 
 
+def _commit_parents(root: Path, commit: str) -> tuple[str, ...]:
+    return tuple(_git(root, "show", "-s", "--format=%P", commit).split())
+
+
+def _only_commit_path(root: Path, parent: str, commit: str, path: str) -> bool:
+    return _git(
+        root, "diff-tree", "--no-commit-id", "--name-only", "-r", parent, commit
+    ).splitlines() == [path]
+
+
+def _inherited_clean_merge_commits(
+    root: Path,
+    report: pair.VerificationReport,
+    report_commit: str,
+    candidates: dict[str, tuple[str, ...]],
+) -> frozenset[str]:
+    """Cover only a byte-clean merge of one exact reviewed artifact pair."""
+
+    if not (
+        _commit_parents(root, report.request_commit) == (report.reviewed_head,)
+        and _only_commit_path(
+            root, report.reviewed_head, report.request_commit, report.request_path
+        )
+        and _commit_parents(root, report_commit) == (report.request_commit,)
+        and _only_commit_path(root, report.request_commit, report_commit, report.path)
+    ):
+        return frozenset()
+
+    report_tree = _git(root, "rev-parse", f"{report_commit}^{{tree}}").strip()
+    return frozenset(
+        commit for commit in candidates
+        if _commit_parents(root, commit) == (report.reviewed_base, report_commit)
+        and _git(root, "rev-parse", f"{commit}^{{tree}}").strip() == report_tree
+    )
+
+
 def evaluate(root: Path, base: str, head: str) -> Outcome:
     outcome = Outcome(base=base, head=head)
     outcome.authority_commits = authority_commits(root, base, head)
@@ -383,7 +421,15 @@ def evaluate(root: Path, base: str, head: str) -> Outcome:
                 path=path,
                 verdict=report.verdict,
                 risk_class=report.risk_class,
-                reviewed_commits=_coverage_commits(root, report, reports_by_ref),
+                reviewed_commits=(
+                    _coverage_commits(root, report, reports_by_ref)
+                    | _inherited_clean_merge_commits(
+                        root,
+                        report,
+                        introductions[path],
+                        outcome.authority_commits,
+                    )
+                ),
             )
         )
 
