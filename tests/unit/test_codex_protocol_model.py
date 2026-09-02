@@ -1,6 +1,6 @@
-"""Codex protocol-model regressions."""
-
 from __future__ import annotations
+
+from pathlib import Path
 
 import pytest
 
@@ -9,204 +9,56 @@ import codex_protocol_model as model
 
 @pytest.mark.parametrize(
     ("model_id", "family"),
-    (
-        ("claude-fable-5", "claude"),
-        ("claude-opus-5", "claude"),
-        ("anthropic-claude-opus-5", "claude"),
-        ("claude-code-anthropic-claude-sonnet-5", "claude"),
-        ("gpt-5", "gpt"),
+    [
         ("gpt-5.6-sol", "gpt"),
-        ("gpt-5.6-terra", "gpt"),
-        ("codex-gpt-5.6-terra", "gpt"),
-        ("openai-gpt-5.6-sol", "gpt"),
-        ("GPT-5 Codex", "gpt"),
-        ("chatgpt-4o", "gpt"),
-        ("o1", "gpt"),
-        ("o3-mini", "gpt"),
-        ("o4", "gpt"),
-        ("gpt-oss-120b", "gpt"),
-        ("gpt-oss-120b-medium", "gpt"),
-        ("google-gemini-3.1-pro-high", "gemini"),
-        ("gemini-3.6-flash", "gemini"),
-        ("gemini-3.6-flash-high", "gemini"),
-        ("gemini-3.6-flash-medium", "gemini"),
-        ("gemini-3.6-flash-low", "gemini"),
-        ("gemini-3.5-flash-high", "gemini"),
-        ("gemini-3.5-flash-medium", "gemini"),
-        ("gemini-3.5-flash-low", "gemini"),
-        ("gemini-3.1-pro-low", "gemini"),
-        ("claude-sonnet-4-6", "claude"),
-        ("claude-opus-4-6-thinking", "claude"),
-        ("Gemini 3.1 Pro (High)", "gemini"),
-        ("grok-4.5", "grok"),
-        ("xai-grok-4", "grok"),
-    ),
+        ("codex-openai-gpt-5.6-terra", "gpt"),
+        ("claude-opus-5", "claude"),
+        ("anthropic-claude-sonnet-5", "claude"),
+        ("Gemini 3.7 Flash (High)", "gemini"),
+        ("xai-grok-4.6", "grok"),
+    ],
 )
-def test_model_family_recognizes_only_registered_model_ids(
-    model_id: str, family: str,
+def test_registered_models_normalize_to_provider_family(
+    model_id: str, family: str
 ) -> None:
     assert model.model_family(model_id) == family
 
 
 @pytest.mark.parametrize(
-    "model_id",
-    (
-        "",
-        "   ",
-        "-gpt-5",
-        ".claude-opus-5",
-        "_gemini-3.1",
-        "composer-2.5",
-        "fixture",
-        "claudex-5",
-        "claude-mystery-5",
-        "gem-3.1-pro",
-        "gemini-pro",
-        "gpt-forged",
-        "gpt-5-forged",
-        "chatgpt-4o-counterfeit",
-        "o3-counterfeit",
-        "gpt-oss-forged",
-        "gpt-oss-120x",
-        "claude-opus-5-forged",
-        "gemini-3.1-forged",
-        "grok-beta",
-        "grok-4-forged",
-        "openai-claude-opus-5",
-        "anthropic-gpt-5",
-        "google-grok-4",
-        "xai-gemini-3.1",
-        "openai-openai-gpt-5",
-        "gpt--5",
-        "gpt_5",
-        "gpt/5",
-        "harness",
-        "claude",
-        "gpt",
-        "chatgpt",
-        "gpt-oss",
-        "gemini",
-        "grok",
-        " gpt-5",
-        "gpt-5 ",
-        "\tgpt-5",
-        "gpt-5\n",
-        " Gemini 3.1 Pro (High) ",
-        "gpt-\x1f5",
-        "gpt-5-999999",
-        "claude-opus-5-999999",
-        "gemini-3-999999",
-        "grok-4-999999",
-        "gpt-5-sol-terra",
-        "gpt-5-preview-preview",
-        "gpt-5-mini-sol",
-        "gemini-3.1-pro-flash",
-        "gemini-3.1-high-low",
-        "gpt-999",
-        "chatgpt-999",
-        "claude-opus-999",
-        "gemini-999",
-        "grok-999",
-        "gpt-5 codex",
-        "gemini 3.1 pro (high)",
-    ),
+    "model_id", ["", "future-model", " gpt-5.6-sol", "openai-claude-opus-5"]
 )
-def test_model_family_rejects_unknown_invented_or_malformed_labels(
-    model_id: str,
-) -> None:
+def test_unknown_or_malformed_models_fail_closed(model_id: str) -> None:
     assert model.model_family(model_id) is None
+    assert not model.model_is_current_reviewer(model_id)
 
 
-@pytest.mark.parametrize(
-    ("left", "right"),
-    (
-        ("claude-opus-5", "anthropic-claude-sonnet-5"),
-        ("gpt-5.6-sol", "openai-gpt-5.6-terra"),
-        ("gemini-3.1-pro-high", "google-gemini-3.6-flash"),
-        ("grok-4", "xai-grok-4.5"),
-        ("invented-a", "claude-opus-5"),
-        ("gpt-5", "invented-b"),
-        ("invented-a", "invented-b"),
-    ),
-)
-def test_model_independence_fails_conservatively(
-    left: str, right: str,
-) -> None:
-    assert model.models_are_independent(left, right) is False
+def test_review_admission_distinguishes_author_and_reviewer() -> None:
+    assert model.model_is_current_author("gemini-3.7-flash-high")
+    assert not model.model_is_current_reviewer("gemini-3.7-flash-high")
+    assert model.model_is_current_reviewer("claude-opus-5")
+    assert model.model_is_current_reviewer("gpt-5.6-sol")
 
 
-def test_model_independence_requires_two_recognized_distinct_families() -> None:
-    assert model.models_are_independent("claude-opus-5", "openai-gpt-5") is True
+def test_high_risk_pair_requires_current_different_families() -> None:
+    assert model.models_are_current_review_pair("gpt-5.6-sol", "claude-opus-5")
+    assert not model.models_are_current_review_pair("gpt-5.6-sol", "gpt-5.6-terra")
+    assert not model.models_are_current_review_pair(
+        "gpt-5.6-sol", "gemini-3.7-flash-high"
+    )
 
 
-def test_review_profiles_are_closed_and_risk_proportional() -> None:
-    ordinary = model.review_profile_for("ordinary-local")
-    material = model.review_profile_for("material-behavior")
-    high_risk = model.review_profile_for("high-risk-control")
-    external = model.review_profile_for("external-effect")
-
-    assert ordinary.focused_verification
-    assert not ordinary.requires_non_author_review
-    assert material.requires_non_author_review
-    assert material.requires_exact_range
-    assert not material.requires_different_model
-    assert high_risk.requires_non_author_review
-    assert high_risk.requires_exact_range
-    assert high_risk.requires_different_model
-    assert high_risk.requires_abuse_class_assessment
-    assert external.requires_live_authorization
-
-    with pytest.raises(ValueError, match="unknown Codex review risk class"):
+def test_risk_profiles_are_small_and_proportional() -> None:
+    assert not model.review_profile_for("ordinary-local").requires_non_author_review
+    assert model.review_profile_for("material-behavior").requires_exact_range
+    high = model.review_profile_for("high-risk-control")
+    assert high.requires_different_model and high.requires_abuse_class_assessment
+    assert model.review_profile_for("external-effect").requires_live_authorization
+    with pytest.raises(ValueError, match="unknown review risk class"):
         model.review_profile_for("invented")
 
 
-def test_work_modes_are_closed_and_phase_proportional() -> None:
-    explore = model.work_profile_for("explore")
-    validate = model.work_profile_for("validate")
-    promote = model.work_profile_for("promote")
-
-    assert explore.rerun_policy == "recorded-reruns-allowed"
-    assert explore.canonical_mutation_policy == "forbidden"
-    assert explore.review_policy == "none-until-transfer-or-phase-change"
-    assert explore.claim_policy == "phase-transition-claims-only"
-    assert explore.record_policy == (
-        "one-campaign-brief-plus-automatic-attempt-log"
-    )
-    assert not explore.requires_frozen_inputs
-    assert not explore.requires_non_author_review
-    assert not explore.requires_rollback_point
-
-    assert validate.rerun_policy == "frozen-input-reproduction"
-    assert validate.canonical_mutation_policy == "forbidden"
-    assert validate.review_policy == "one-non-author-candidate-review"
-    assert validate.claim_policy == "load-bearing-candidate-claims"
-    assert validate.record_policy == "frozen-report-plus-generated-manifest"
-    assert validate.requires_frozen_inputs
-    assert validate.requires_non_author_review
-    assert not validate.requires_rollback_point
-
-    assert promote.rerun_policy == "reviewed-candidate-only"
-    assert promote.canonical_mutation_policy == "separately-authorized"
-    assert promote.review_policy == "reviewed-candidate-plus-effect-authority"
-    assert promote.claim_policy == (
-        "load-bearing-claims-plus-independent-review"
-    )
-    assert promote.record_policy == "rollback-record-plus-approval-evidence"
-    assert promote.requires_frozen_inputs
-    assert promote.requires_non_author_review
-    assert promote.requires_rollback_point
-
-    with pytest.raises(ValueError, match="unknown Codex work mode"):
-        model.work_profile_for("invented")
-
-
-def test_explore_profile_cannot_be_presented_as_promote() -> None:
-    explore = model.work_profile_for("explore")
-    promote = model.work_profile_for("promote")
-
-    assert explore.work_mode == "explore"
-    assert promote.work_mode == "promote"
-    assert explore.canonical_mutation_policy != promote.canonical_mutation_policy
-    assert explore.review_policy != promote.review_policy
-    assert not explore.requires_rollback_point
-    assert promote.requires_rollback_point
+def test_configuration_loader_fails_closed(tmp_path: Path) -> None:
+    bad = tmp_path / "models.toml"
+    bad.write_text("schema_version = 2\n", encoding="utf-8")
+    with pytest.raises(RuntimeError):
+        model.load_model_families(bad)

@@ -1,155 +1,73 @@
-# Pipeline operations
+# Operations
 
-This runbook operates the Codex, Claude, and AGY desktop-app team. It does not
-contain a provider launch path.
+## Orient
 
-## Readiness
+1. Read the current user request and repository instructions.
+2. Inspect the branch, `git status --short`, relevant diff, and recent commits.
+3. Call `team_status` once and read addressed messages with `team_wait`.
+4. Start the scoped work directly.
 
-Open the same repository in any or all three apps. Their checked-in MCP
-bindings supply distinct member labels; do not copy one member's binding over
-another.
+Use `team_send` for a bounded question, finding, result, or handoff. Queue
+success is not acknowledgement; acknowledgement is not understanding; a reply
+must be read to determine whether it is useful.
 
-On Antigravity's first open, use Open Folder for this exact repository, then
-refresh and approve the workspace `pipeline-team` server. To let AGY
-communicate without pausing at every tool call, explicitly allow
-`mcp(pipeline-team/*)`. This is a global, name-based user permission: avoid the
-same server name in untrusted workspaces. Pipeline checks it but never writes
-permission policy.
-
-Run the local preflight when setup changed or communication fails:
-
-```bash
-bin/pipeline preflight
-```
-
-It checks app installation, config shape, configured labels, a real MCP
-initialize handshake, Codex and Claude's native config views, Antigravity's
-exact workspace registration, and AGY's team-tool permission. These are
-configuration proxies; after Antigravity first registers the folder, confirm
-`pipeline-team` is connected in Installed MCP Servers. No row proves that a
-desktop window or model session remains live.
-
-## Begin or resume work
-
-1. Read the current user task.
-2. Inspect `git status --short --branch`, the relevant diff, and recent task
-   history.
-3. Call `team_status` once.
-4. Read addressed messages with `team_wait` after the last cursor you handled.
-5. Start the scoped work. Do not reconstruct a role board or process an entire
-   legacy mailbox.
-
-Git, tests, and desktop task history are normal state. A checkpoint is needed
-only when another member must take over after transfer, interruption,
-compaction, or wrap.
-
-## Communicate
-
-Use `team_send` for a bounded request, result, challenge, coordination note, or
-reply. Address one member when ownership is clear; use `all` only when every
-member needs the same information.
-
-Include enough context to act: objective, relevant paths or commit, what was
-observed, and the requested response. Do not paste hidden chain-of-thought or a
-large transcript. Link a reply with `reply_to` so status can show the exchange.
-
-State interpretation:
-
-| Observation | Meaning |
-|---|---|
-| `team_send` returns `queued` | Stored successfully; no acknowledgement claim. |
-| Recipient appears in `acknowledged_by` | Its adapter advanced `after_id` through the message. |
-| A reply id appears | A response was queued; inspect its content. |
-| `last_seen` changed | Recent tool activity, not proof the app is open. |
-
-If an answer is required, wait at a natural boundary with `team_wait` or
-continue independent work and check later. Never convert a timeout into assent,
-acknowledgement, a globally empty queue, or authority.
-
-## Implement
-
-Keep ordinary work direct. Parallelize read-only investigation and
-nonoverlapping paths when useful. Give one member ownership of integration and
-serialize shared-file or shared-resource writes.
-
-Use a failing behavior test when feasible, focused checks while iterating, and
-one final proportionate pass. Investigate unexpected failures before changing
-behavior. Preserve unrelated work and inspect the exact diff before handoff or
-commit.
-
-Useful local commands:
+## Verify
 
 ```bash
 bin/pipeline --help
+bin/pipeline preflight
 bin/pipeline status
-bin/pipeline doctor
 bin/pipeline check --fast
 bin/pipeline check
-bin/pipeline check docs
-bin/pipeline check arch
 ```
 
-These commands operate on the repository. None is a provider-launch command.
-The default doctor and coordination check report current desktop-team state.
-Use their `--history` option only for retired cursor, pre-cutover review, and
-route-lineage diagnostics.
+`check --fast` validates the live harness state. `check` also runs the full test
+suite. Use focused tests during implementation and one proportionate final pass.
+Investigate unexpected failures before changing behavior. A green check proves
+only the paths it executed.
 
-## Review
+## Formal review
 
-Ordinary local work has no formal role. For `material-behavior` or
-`high-risk-control`, temporarily assign the candidate owner as `author` and a
-non-author Codex or Claude member as `reviewer`. Bind review to the exact
-committed base and head. High-risk review also needs a different model family
-and explicit abuse-class assessment.
+For `material-behavior` or `high-risk-control`, commit the candidate and create
+an exact-range request:
 
-AGY may map, test, challenge, review evidence, and propose fixes. Material AGY
-findings must be dispositioned on their merits, but AGY cannot publish the sole
-formal GO/NITS/FAIL result or grant authority. End the responsibilities when
-the range is resolved.
+```bash
+bin/pipeline review request --help
+bin/pipeline mail send --help
+```
 
-## Effects
+The author sends `verify-request` to a non-author Codex or Claude member. The
+reviewer reproduces the evidence, inspects the actual diff, and sends one bound
+`verification-report`. High-risk review also requires different model families
+and a request-level abuse-class assessment.
 
-Before push, merge, release, paid spend, live-data mutation, or a destructive
-operation, resolve exact authority for:
+Validate a draft before publication with:
 
-- executor;
-- target;
-- effect;
-- scope.
+```bash
+bin/pipeline review validate --help
+```
 
-If any element is missing, stop before the effect and ask the user. A team
-message, old approval, role label, review, or test cannot fill a blank.
+Admission for an explicit range is checked with:
 
-## Transfer and close
+```bash
+bin/pipeline check admission --base <full-sha> --head <full-sha>
+```
 
-For a real transfer, leave one concise checkpoint containing objective, scope,
-owner, base/head, evidence, verification status, blockers, and next executable
-action. Prefer the desktop task history. When the record must outlive that task,
-use `bin/pipeline checkpoint` to draft it and the fixed `bin/pipeline mail send`
-writer to persist it. That writer is also available for a risk-required exact-
-range formal review artifact or governed learning-candidate/disposition record,
-never routine chat or standing-seat workflow.
+Do not write ordinary team conversation to the mailbox. Current formal
+artifacts stay in `coordination/mailbox/sent/`; older state is available through
+Git history.
 
-At ordinary completion, report changed files, tests actually run, remaining
-limitations, and any effects not performed.
+## Troubleshoot
 
-## Troubleshooting
+- Missing team tool: reopen the repository in the app and run `preflight`.
+- AGY not connected: refresh the workspace `pipeline-team` plugin and approve
+  the exact `mcp(pipeline-team/*)` permission if desired.
+- Queued but unacknowledged: continue independent work or wait at a natural
+  boundary; do not infer assent.
+- Store security refusal: inspect the Git common directory's `pipeline-team`
+  entry and restore owner-only, non-symlinked state.
+- Formal artifact refusal: run `review validate` and fix the reported binding,
+  range, identity, or evidence error.
 
-- Missing tool: verify the app opened this repository, approve or reload its
-  workspace MCP server, and run `preflight`.
-- AGY permission failure: approve the exact `mcp(pipeline-team/*)` scope in
-  Antigravity only if interruption-free use is desired and same-named servers
-  in other workspaces are trusted. Do not use broad `mcp(*)` merely to make the
-  check green.
-- Wrong label: repair the app's project config. Labels come from args but are
-  local coordination hints, not attestation.
-- Queued but unacknowledged: the recipient has not advanced its cursor through it.
-- Acknowledged without useful reply: send a precise follow-up or continue without
-  claiming agreement.
-- Store permission or symlink refusal: inspect the repository Git common
-  directory's `pipeline-team` entry; keep it owner-only and do not bypass the
-  check.
-- Legacy mailbox conversation or receipt conflict: treat it as historical
-  evidence and use current Git/task state plus MCP for routine work. Preserve
-  only a required formal artifact, real transfer, or governed learning record
-  through the fixed writer.
+Push, merge, release, spend, destructive actions, and live-data mutation are
+performed only with exact current user authorization.

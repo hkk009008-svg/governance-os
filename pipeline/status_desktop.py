@@ -117,7 +117,7 @@ def render_orientation_snapshot(snapshot: dict) -> str:
             commit = current.get("commit") or "uncommitted"
             lines.append(
                 f"Formal review: pending {current['path']}@{commit} "
-                f"assigned={current['assigned_operator']}"
+                f"reviewer={current['reviewer']}"
             )
         elif failed is not None:
             lines.append(

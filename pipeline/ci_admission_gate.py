@@ -46,7 +46,6 @@ for _path in (_REPO_ROOT, _SCRIPTS_DIR):
 
 import compact_pair_loop as pair  # noqa: E402
 import git_runner  # noqa: E402
-import mailbox_review_admission  # noqa: E402
 import mailbox_writer  # noqa: E402
 import protocol_mailbox  # noqa: E402
 
@@ -72,14 +71,10 @@ AUTHORITY_SURFACES: tuple[str, ...] = (
     "CLAUDE.md",
     "OPERATIONS.md",
     "README.md",
-    "RUNBOOK-DAILY.md",
     "conftest.py",
     "coordination/bin/",
     "coordination/mailbox/kinds.txt",
-    "docs/PROGRAM-MANUAL.md",
-    "docs/REMEDIATION-INVENTORY.md",
     "docs/protocol/",
-    "governance.toml",
     "pyproject.toml",
     "pytest.ini",
     "requirements-dev.txt",
@@ -211,7 +206,7 @@ def _events_touched_in_range(root: Path, base: str, head: str) -> list[str]:
         "-r",
         "--format=",
         "--name-only",
-        "--diff-filter=ADMRT",
+        "--diff-filter=AMRT",
         "--",
         _MAILBOX_SENT.rstrip("/"),
         input_data=revisions,
@@ -241,7 +236,6 @@ def _validate_current_envelope(
     raw: bytes,
     path: str,
     kinds: frozenset[str],
-    introduction_commit: str,
 ) -> None:
     envelope = mailbox_writer.validate_event_envelope_bytes(
         root, raw, path, kinds=kinds
@@ -251,30 +245,7 @@ def _validate_current_envelope(
         envelope.group("sender"),
         envelope.group("recipient"),
     )
-    frozen_legacy = mailbox_review_admission._is_exact_frozen_legacy_route(
-        envelope.group("kind"),
-        envelope.group("sender"),
-        envelope.group("recipient"),
-        path,
-        introduction_commit,
-        raw,
-    )
-    historical_retired_route = (
-        mailbox_review_admission.is_historical_retired_review_route(
-            envelope.group("kind"),
-            envelope.group("sender"),
-            envelope.group("recipient"),
-            introduction_commit,
-            lambda ancestor, descendant: git_runner.run_git(
-                root,
-                ("merge-base", "--is-ancestor", ancestor, descendant),
-                mode="authority",
-            ).returncode == 0,
-        )
-    )
-    if problem is not None and not (
-        frozen_legacy or historical_retired_route
-    ):
+    if problem is not None:
         raise pair.CompactPairError(problem)
 
 
@@ -287,12 +258,12 @@ def _introduction_commit(root: Path, head: str, path: str) -> str:
     return commit
 
 
-def _reviewed_commits(root: Path, report: pair.VerificationReport) -> frozenset[str]:
+def _reviewed_commits(root: Path, request: pair.VerifyRequest) -> frozenset[str]:
     try:
         output = _git(
             root,
             "rev-list",
-            f"{report.reviewed_base}..{report.reviewed_head}",
+            f"{request.reviewed_base}..{request.reviewed_head}",
         )
     except AdmissionError:
         # A report about another repository resolves nowhere here and simply
@@ -304,14 +275,17 @@ def _reviewed_commits(root: Path, report: pair.VerificationReport) -> frozenset[
 def _coverage_commits(
     root: Path,
     report: pair.VerificationReport,
-    reports_by_ref: dict[tuple[str, str], pair.VerificationReport],
+    request: pair.VerifyRequest,
+    reports_by_ref: dict[
+        tuple[str, str], tuple[pair.VerificationReport, pair.VerifyRequest]
+    ],
 ) -> frozenset[str]:
-    commits = set(_reviewed_commits(root, report))
+    commits = set(_reviewed_commits(root, request))
     seen: set[tuple[str, str]] = set()
     while report.supersedes in reports_by_ref and report.supersedes not in seen:
         seen.add(report.supersedes)
-        report = reports_by_ref[report.supersedes]
-        commits.update(_reviewed_commits(root, report))
+        report, request = reports_by_ref[report.supersedes]
+        commits.update(_reviewed_commits(root, request))
     return frozenset(commits)
 
 
@@ -328,15 +302,16 @@ def _only_commit_path(root: Path, parent: str, commit: str, path: str) -> bool:
 def _inherited_clean_merge_commits(
     root: Path,
     report: pair.VerificationReport,
+    request: pair.VerifyRequest,
     report_commit: str,
     candidates: dict[str, tuple[str, ...]],
 ) -> frozenset[str]:
     """Cover only a byte-clean merge of one exact reviewed artifact pair."""
 
     if not (
-        _commit_parents(root, report.request_commit) == (report.reviewed_head,)
+        _commit_parents(root, report.request_commit) == (request.reviewed_head,)
         and _only_commit_path(
-            root, report.reviewed_head, report.request_commit, report.request_path
+            root, request.reviewed_head, report.request_commit, report.request_path
         )
         and _commit_parents(root, report_commit) == (report.request_commit,)
         and _only_commit_path(root, report.request_commit, report_commit, report.path)
@@ -346,7 +321,7 @@ def _inherited_clean_merge_commits(
     report_tree = _git(root, "rev-parse", f"{report_commit}^{{tree}}").strip()
     return frozenset(
         commit for commit in candidates
-        if _commit_parents(root, commit) == (report.reviewed_base, report_commit)
+        if _commit_parents(root, commit) == (request.reviewed_base, report_commit)
         and _git(root, "rev-parse", f"{commit}^{{tree}}").strip() == report_tree
     )
 
@@ -359,19 +334,19 @@ def evaluate(root: Path, base: str, head: str) -> Outcome:
 
     kinds = _known_kinds_at(root, head)
     touched_events = _events_touched_in_range(root, base, head)
-    parsed: dict[str, pair.VerificationReport] = {}
+    parsed: dict[str, tuple[pair.VerificationReport, pair.VerifyRequest]] = {}
     for path in (item for item in touched_events if item.endswith(_REPORT_SUFFIX)):
-        introduction = _introduction_commit(root, head, path)
         try:
             raw = _git(root, "show", f"{head}:{path}").encode("utf-8")
-        except AdmissionError as exc:
-            raise AdmissionError(f"immutable review artifact is absent: {path}") from exc
+        except AdmissionError:
+            # The mailbox contains current formal state only. A report added
+            # and then deleted inside the range is history, not live evidence.
+            continue
+        introduction = _introduction_commit(root, head, path)
         if raw != _git(root, "show", f"{introduction}:{path}").encode("utf-8"):
             raise AdmissionError(f"immutable review artifact changed: {path}")
         try:
-            _validate_current_envelope(
-                root, raw, path, kinds, introduction
-            )
+            _validate_current_envelope(root, raw, path, kinds)
             report = pair.parse_verification_report_committed_bytes(root, path, raw)
         except (mailbox_writer.MailboxWriterError, pair.CompactPairError) as exc:
             outcome.skipped_reports.append((path, f"unparseable: {exc}"))
@@ -379,17 +354,30 @@ def evaluate(root: Path, base: str, head: str) -> Outcome:
         # Trusted PR admission deliberately keeps the checkout at the base and
         # reads the fetched candidate by explicit SHA. Supersession ancestry
         # must use that same candidate history, not the checkout's literal HEAD.
-        violations = pair.validate_report(root, report, history_head=head)
+        violations = pair.validate_published_report(
+            root, report, introduction, history_head=head
+        )
         if violations:
             outcome.skipped_reports.append((path, "; ".join(violations)))
             continue
-        parsed[path] = report
+        try:
+            request = pair.request_for_report(root, report)
+        except pair.CompactPairError as exc:
+            outcome.skipped_reports.append((path, f"request binding invalid: {exc}"))
+            continue
+        parsed[path] = report, request
 
-    superseded = {report.supersedes for report in parsed.values() if report.supersedes}
+    superseded = {
+        report.supersedes
+        for report, _request in parsed.values()
+        if report.supersedes
+    }
     introductions = {path: _introduction_commit(root, head, path) for path in parsed}
-    reports_by_ref = {(path, introductions[path]): report for path, report in parsed.items()}
+    reports_by_ref = {
+        (path, introductions[path]): item for path, item in parsed.items()
+    }
 
-    for path, report in sorted(parsed.items()):
+    for path, (report, request) in sorted(parsed.items()):
         if (path, introductions[path]) in superseded:
             outcome.skipped_reports.append((path, "superseded by a later report"))
             continue
@@ -399,20 +387,22 @@ def evaluate(root: Path, base: str, head: str) -> Outcome:
             )
             if (
                 report.verdict == "FAIL"
-                and report.reviewer_seat in protocol_mailbox.FORMAL_REVIEWERS
+                and report.reviewer_member in protocol_mailbox.FORMAL_REVIEWERS
             ):
-                failed_commits = _coverage_commits(root, report, reports_by_ref)
+                failed_commits = _coverage_commits(
+                    root, report, request, reports_by_ref
+                )
                 failed_commits &= outcome.authority_commits.keys()
                 if failed_commits:
                     outcome.blocking_failures.append((path, frozenset(failed_commits)))
             continue
-        if report.risk_class != pair.HIGH_RISK_CONTROL or not report.risk_class_explicit:
+        if request.risk_class != pair.HIGH_RISK_CONTROL:
             outcome.skipped_reports.append(
                 (
                     path,
                     "authority surfaces require an explicit "
                     f"{pair.HIGH_RISK_CONTROL} review "
-                    f"(report declares {report.risk_class})",
+                    f"(request declares {request.risk_class})",
                 )
             )
             continue
@@ -420,12 +410,13 @@ def evaluate(root: Path, base: str, head: str) -> Outcome:
             Coverage(
                 path=path,
                 verdict=report.verdict,
-                risk_class=report.risk_class,
+                risk_class=request.risk_class,
                 reviewed_commits=(
-                    _coverage_commits(root, report, reports_by_ref)
+                    _coverage_commits(root, report, request, reports_by_ref)
                     | _inherited_clean_merge_commits(
                         root,
                         report,
+                        request,
                         introductions[path],
                         outcome.authority_commits,
                     )

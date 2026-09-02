@@ -55,38 +55,14 @@ def collect_git(repo_root: Path) -> dict:
     }
 
 
-def _live_review_state(review_state: object, projection: object) -> object:
-    """Compatibility wrapper for the shared current-review filter."""
-    import check_coordination  # type: ignore
-    return check_coordination.live_verify_review_state(review_state, projection)
-
-
-def _collect_review_state(
-    repo_root: Path,
-    git: dict,
-) -> tuple[dict, object | None]:
+def _collect_review_state(repo_root: Path) -> dict:
     """Collect current formal-review state independently of routine dialogue."""
 
     # Local import avoids making the status helper/checker module dependency
     # recursive at import time.
     import check_coordination  # type: ignore
 
-    projection_result = check_coordination.committed_mailbox_projection(repo_root)
-    review_state = check_coordination.inspect_verify_review_state(
-        repo_root, projection_result=projection_result
-    )
-    projection = projection_result[0]
-    if projection is None:
-        review_state = check_coordination.VerifyReviewState(
-            pending=(),
-            failed=(),
-            problem=(
-                review_state.problem
-                or "committed mailbox projection unavailable for live review state"
-            ),
-        )
-    else:
-        review_state = _live_review_state(review_state, projection)
+    review_state = check_coordination.inspect_verify_review_state(repo_root)
     requests = list(review_state.pending)
     failed_reviews = list(review_state.failed)
     current = max(requests, key=lambda request: request.path, default=None)
@@ -95,23 +71,8 @@ def _collect_review_state(
     )
     issues = check_coordination.run(
         repo_root / "coordination",
-        docs_root=repo_root / "docs",
         review_state=review_state,
-        committed_projection=projection_result,
     )
-    if (
-        projection is not None
-        and (
-            not isinstance(git["git_sha"], str)
-            or not projection.commits.head.startswith(git["git_sha"])
-        )
-    ):
-        issues.append(check_coordination.CoordIssue(
-            "coordination/mailbox/sent/",
-            "commit_projection_identity_drift",
-            "FATAL",
-            "Git status and committed mailbox projection observed different HEADs",
-        ))
     fatals = [issue for issue in issues if issue.severity == "FATAL"]
     advisories = [issue for issue in issues if issue.severity == "ADVISORY"]
 
@@ -120,12 +81,12 @@ def _collect_review_state(
         blocker = f"{fatals[0].kind}: {fatals[0].message}"
     elif current is not None and not current.valid:
         blocker = (
-            f"invalid current request for {current.assigned_operator}: "
+            f"invalid current request for {current.reviewer_member}: "
             f"{current.problem}"
         )
     elif failed is not None:
         blocker = (
-            f"failed review for {failed.assigned_operator}: "
+            f"failed review for {failed.reviewer_member}: "
             f"{failed.report_path}@{failed.report_commit}"
         )
 
@@ -139,7 +100,7 @@ def _collect_review_state(
             )
     elif current is not None:
         next_action = (
-            f"{current.assigned_operator} reviews the exact committed request"
+            f"{current.reviewer_member} reviews the exact committed request"
         )
     else:
         next_action = "continue scoped team work; request formal review when risk requires it"
@@ -149,11 +110,9 @@ def _collect_review_state(
         current_data = {
             "path": current.path,
             "commit": current.commit,
-            "assigned_operator": current.assigned_operator,
+            "reviewer": current.reviewer_member,
             "valid": current.valid,
-            "grandfathered": current.grandfathered,
             "problem": current.problem,
-            "reviewed_repository": current.reviewed_repository,
             "reviewed_base": current.reviewed_base,
             "reviewed_head": current.reviewed_head,
         }
@@ -164,21 +123,12 @@ def _collect_review_state(
             "request_commit": failed.request_commit,
             "report_path": failed.report_path,
             "report_commit": failed.report_commit,
-            "assigned_operator": failed.assigned_operator,
+            "reviewer": failed.reviewer_member,
         }
     gate_status = (
         "FAIL" if fatals or failed_reviews else ("WARN" if advisories else "PASS")
     )
     state = {
-        "projection": (
-            {
-                "head": projection.commits.head,
-                "root": str(projection.commits.identity.root),
-                "git_dir": str(projection.commits.identity.git_dir),
-            }
-            if projection is not None
-            else None
-        ),
         "current_request": current_data,
         "failed_review": failed_data,
         "gate": {
@@ -190,14 +140,14 @@ def _collect_review_state(
         "blocker": blocker,
         "next_action": next_action,
     }
-    return state, projection
+    return state
 
 
 def collect_orientation_snapshot(repo_root: Path) -> dict:
     """Collect the live desktop-team snapshot."""
     now = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     git = collect_git(repo_root)
-    review, _projection = _collect_review_state(repo_root, git)
+    review = _collect_review_state(repo_root)
     return {
         "generated_at": now,
         "git": {
