@@ -360,14 +360,23 @@ def evaluate(root: Path, base: str, head: str) -> Outcome:
     kinds = _known_kinds_at(root, head)
     touched_events = _events_touched_in_range(root, base, head)
     parsed: dict[str, pair.VerificationReport] = {}
+    carried_from_base: set[str] = set()
     for path in (item for item in touched_events if item.endswith(_REPORT_SUFFIX)):
         introduction = _introduction_commit(root, head, path)
         try:
             raw = _git(root, "show", f"{head}:{path}").encode("utf-8")
-        except AdmissionError as exc:
-            raise AdmissionError(f"immutable review artifact is absent: {path}") from exc
-        if raw != _git(root, "show", f"{introduction}:{path}").encode("utf-8"):
-            raise AdmissionError(f"immutable review artifact changed: {path}")
+        except AdmissionError:
+            # A candidate may retire historical mailbox files. Keep evaluating
+            # their trusted-base bytes so deletion cannot erase an active FAIL.
+            try:
+                raw = _git(root, "show", f"{base}:{path}").encode("utf-8")
+            except AdmissionError:
+                outcome.skipped_reports.append((path, "absent at integration base and head"))
+                continue
+            carried_from_base.add(path)
+        else:
+            if raw != _git(root, "show", f"{introduction}:{path}").encode("utf-8"):
+                raise AdmissionError(f"immutable review artifact changed: {path}")
         try:
             _validate_current_envelope(
                 root, raw, path, kinds, introduction
@@ -403,7 +412,7 @@ def evaluate(root: Path, base: str, head: str) -> Outcome:
             ):
                 failed_commits = _coverage_commits(root, report, reports_by_ref)
                 failed_commits &= outcome.authority_commits.keys()
-                if failed_commits:
+                if failed_commits or path in carried_from_base:
                     outcome.blocking_failures.append((path, frozenset(failed_commits)))
             continue
         if report.risk_class != pair.HIGH_RISK_CONTROL or not report.risk_class_explicit:
