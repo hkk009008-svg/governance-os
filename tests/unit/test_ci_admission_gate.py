@@ -313,6 +313,39 @@ def _land_pair(
     )
 
 
+def _land_exact_pair(
+    root: Path,
+    reviewed_base: str,
+    reviewed_head: str,
+) -> tuple[str, str]:
+    request_commit = _commit_file(
+        root, REQUEST_PATH,
+        _request_text(
+            reviewed_base, reviewed_head,
+            risk_class="high-risk-control", finding_refs=(),
+        ),
+        "review: request verification",
+    )
+    return request_commit, _commit_file(
+        root, REPORT_PATH,
+        _report_text(
+            reviewed_base, reviewed_head, request_commit, verdict="GO",
+            risk_class="high-risk-control",
+            reviewer_model="claude-opus-4-7",
+            finding_refs=(),
+        ),
+        "review: publish verdict",
+    )
+
+
+def _reviewed_feature(root: Path, base: str) -> tuple[str, str, str]:
+    _git(root, "checkout", "-q", "-b", "feature", base)
+    reviewed_head = _commit_file(
+        root, "pipeline/mailbox_writer.py", "POLICY = 1\n", "feat: writer policy"
+    )
+    return (reviewed_head, *_land_exact_pair(root, base, reviewed_head))
+
+
 def _land_remediation_pair(
     root: Path,
     reviewed_base: str,
@@ -704,6 +737,79 @@ def test_tree_identical_merge_is_detected_from_its_feature_parent(
     commits = gate.authority_commits(root, feature, merge)
 
     assert commits == {merge: ("pipeline/mailbox_writer.py",)}
+
+
+def test_clean_reviewed_merge_inherits_exact_pair_coverage(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    root, base = _init_repo(tmp_path)
+    main_branch = _git(root, "branch", "--show-current")
+    reviewed_head, request_commit, report_commit = _reviewed_feature(root, base)
+    _git(root, "checkout", "-q", main_branch)
+    _git(root, "merge", "--no-ff", "-q", "-m", "merge: feature", "feature")
+    merge = _git(root, "rev-parse", "HEAD")
+
+    assert _git(root, "show", "-s", "--format=%P", merge) == f"{base} {report_commit}"
+    assert _git(root, "rev-parse", f"{merge}^{{tree}}") == _git(
+        root, "rev-parse", f"{report_commit}^{{tree}}"
+    )
+    assert (
+        _git(root, "show", "-s", "--format=%P", request_commit),
+        _git(root, "show", "-s", "--format=%P", report_commit),
+    ) == (reviewed_head, request_commit)
+    _git(root, "checkout", "-q", "--detach", base)
+    outcome = gate.evaluate(root, base, merge)
+    assert outcome.admitted, gate.render(outcome)
+    assert merge in outcome.coverages[0].reviewed_commits
+
+    monkeypatch.setattr(
+        gate, "_inherited_clean_merge_commits", lambda *_args, **_kwargs: frozenset()
+    )
+    reverted = gate.evaluate(root, base, merge)
+    assert not reverted.admitted and merge in reverted.uncovered
+
+
+@pytest.mark.parametrize(
+    "case",
+    ("resolution", "ordinary-extra", "authority-extra", "wrong-parent", "octopus"),
+)
+def test_nearby_merge_shapes_do_not_inherit_review(
+    tmp_path: Path, case: str,
+) -> None:
+    root, base = _init_repo(tmp_path)
+    main_branch = _git(root, "branch", "--show-current")
+    _reviewed_feature(root, base)
+    if case.endswith("extra"):
+        path = "pipeline/extra.py" if case.startswith("authority") else "src/extra.py"
+        _commit_file(root, path, "EXTRA = True\n", "test: extra post-review commit")
+    elif case == "octopus":
+        _git(root, "checkout", "-q", "-b", "empty-side", base)
+        _git(root, "commit", "--allow-empty", "-q", "-m", "test: empty side")
+    _git(root, "checkout", "-q", main_branch)
+    if case == "wrong-parent":
+        _git(root, "commit", "--allow-empty", "-q", "-m", "test: advance integration")
+    targets = ("feature", "empty-side") if case == "octopus" else ("feature",)
+    no_commit = ("--no-commit",) if case == "resolution" else ()
+    _git(root, "merge", "--no-ff", "-q", *no_commit, "-m", "merge: candidate", *targets)
+    if case == "resolution":
+        (root / "pipeline/merge-only.py").write_text("INJECTED = True\n", encoding="utf-8")
+        _git(root, "add", "pipeline/merge-only.py")
+        _git(root, "commit", "-q", "-m", "merge: resolution delta")
+    merge = _git(root, "rev-parse", "HEAD")
+    outcome = gate.evaluate(root, base, merge)
+    assert not outcome.admitted and merge in outcome.uncovered
+
+
+def test_pr63_clean_merge_shape_is_covered_by_its_existing_review(
+    repo_root: Path,
+) -> None:
+    base = "6da6ac65b48fc2d5198cfedec6021ff2f60dec98"
+    merge = "9143c96284db718848db72b4900c61dede77c7b9"
+
+    outcome = gate.evaluate(repo_root, base, merge)
+
+    assert outcome.admitted, gate.render(outcome)
+    assert outcome.uncovered == {}
 
 
 def test_tree_identical_merge_with_only_ordinary_changes_is_not_authority(
