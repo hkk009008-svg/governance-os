@@ -145,3 +145,52 @@ def test_clean_merge_of_review_chain_inherits_coverage(tmp_path) -> None:
     outcome = gate.evaluate(root, base, merge)
     assert outcome.admitted
     assert merge in outcome.authority_commits
+
+
+def test_clean_merge_inherits_when_integration_parent_is_in_reviewed_head(tmp_path) -> None:
+    root = tmp_path / "repo"
+    base = init_repo(root)
+    commit(root, {"pipeline/control.py": "enabled = True\n"}, "candidate")
+    git(root, "branch", "reviewed")
+
+    git(root, "checkout", "-q", "-B", "integration", base)
+    integration = commit(
+        root, {"pipeline/integration.py": "enabled = True\n"}, "integration"
+    )
+    git(root, "checkout", "-q", "reviewed")
+    git(root, "merge", "-q", "--no-ff", "integration", "-m", "sync integration")
+    reviewed_head = git(root, "rev-parse", "HEAD")
+    request_path, request_commit = add_request(root, base, reviewed_head)
+    _report_path, _report_commit = add_report(root, request_path, request_commit)
+
+    git(root, "checkout", "-q", "integration")
+    git(root, "merge", "-q", "--no-ff", "reviewed", "-m", "land reviewed chain")
+    merge = git(root, "rev-parse", "HEAD")
+
+    outcome = gate.evaluate(root, integration, merge)
+
+    assert outcome.admitted, gate.render(outcome)
+    assert merge in outcome.authority_commits
+
+
+def test_clean_merge_does_not_inherit_from_unreviewed_first_parent(tmp_path) -> None:
+    root = tmp_path / "repo"
+    base = init_repo(root)
+    reviewed_base = commit(root, {"notes.txt": "candidate\n"}, "candidate")
+    reviewed_head = commit(
+        root, {"pipeline/control.py": "enabled = True\n"}, "reviewed control"
+    )
+    request_path, request_commit = add_request(root, reviewed_base, reviewed_head)
+    _report_path, report_commit = add_report(root, request_path, request_commit)
+    git(root, "branch", "reviewed", report_commit)
+
+    git(root, "checkout", "-q", "-B", "unreviewed", base)
+    git(root, "commit", "-q", "--allow-empty", "-m", "unreviewed first parent")
+    unreviewed = git(root, "rev-parse", "HEAD")
+    git(root, "merge", "-q", "--no-ff", "reviewed", "-m", "merge reviewed chain")
+    merge = git(root, "rev-parse", "HEAD")
+
+    outcome = gate.evaluate(root, unreviewed, merge)
+
+    assert not outcome.admitted
+    assert merge in outcome.uncovered

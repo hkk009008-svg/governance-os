@@ -19,7 +19,8 @@ committed review at all. This gate closes exactly that gap and nothing more:
      delegated to the canonical `compact_pair_loop.validate_report`, which
      validates the report's declared non-author seat and model-family fields.
      A two-parent merge inherits that report only when it is a byte-clean
-     landing of exactly Reviewed head -> request -> report onto Reviewed base.
+     landing of exactly Reviewed head -> request -> report onto an integration
+     parent already contained by Reviewed head.
      A current FAIL blocks until superseded; valid remediation carries the
      failed report's reviewed range forward instead of orphaning it.
      Repository bytes cannot attest which provider actually executed a review;
@@ -293,6 +294,19 @@ def _commit_parents(root: Path, commit: str) -> tuple[str, ...]:
     return tuple(_git(root, "show", "-s", "--format=%P", commit).split())
 
 
+def _is_ancestor(root: Path, ancestor: str, descendant: str) -> bool:
+    result = git_runner.run_git(
+        root,
+        ("merge-base", "--is-ancestor", ancestor, descendant),
+        mode="authority",
+        text=True,
+    )
+    if result.returncode not in (0, 1):
+        detail = result.stderr.strip() or result.stdout.strip()
+        raise AdmissionError(detail or "git merge-base --is-ancestor failed")
+    return result.returncode == 0
+
+
 def _only_commit_path(root: Path, parent: str, commit: str, path: str) -> bool:
     return _git(
         root, "diff-tree", "--no-commit-id", "--name-only", "-r", parent, commit
@@ -319,11 +333,17 @@ def _inherited_clean_merge_commits(
         return frozenset()
 
     report_tree = _git(root, "rev-parse", f"{report_commit}^{{tree}}").strip()
-    return frozenset(
-        commit for commit in candidates
-        if _commit_parents(root, commit) == (request.reviewed_base, report_commit)
-        and _git(root, "rev-parse", f"{commit}^{{tree}}").strip() == report_tree
-    )
+    inherited: set[str] = set()
+    for commit in candidates:
+        parents = _commit_parents(root, commit)
+        if (
+            len(parents) == 2
+            and parents[1] == report_commit
+            and _is_ancestor(root, parents[0], request.reviewed_head)
+            and _git(root, "rev-parse", f"{commit}^{{tree}}").strip() == report_tree
+        ):
+            inherited.add(commit)
+    return frozenset(inherited)
 
 
 def evaluate(root: Path, base: str, head: str) -> Outcome:
