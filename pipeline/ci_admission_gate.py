@@ -206,7 +206,7 @@ def _events_touched_in_range(root: Path, base: str, head: str) -> list[str]:
         "-r",
         "--format=",
         "--name-only",
-        "--diff-filter=AMRT",
+        "--diff-filter=AMRTD",
         "--",
         _MAILBOX_SENT.rstrip("/"),
         input_data=revisions,
@@ -335,16 +335,25 @@ def evaluate(root: Path, base: str, head: str) -> Outcome:
     kinds = _known_kinds_at(root, head)
     touched_events = _events_touched_in_range(root, base, head)
     parsed: dict[str, tuple[pair.VerificationReport, pair.VerifyRequest]] = {}
+    carried_from_base: set[str] = set()
     for path in (item for item in touched_events if item.endswith(_REPORT_SUFFIX)):
+        introduction = _introduction_commit(root, head, path)
         try:
             raw = _git(root, "show", f"{head}:{path}").encode("utf-8")
         except AdmissionError:
-            # The mailbox contains current formal state only. A report added
-            # and then deleted inside the range is history, not live evidence.
-            continue
-        introduction = _introduction_commit(root, head, path)
-        if raw != _git(root, "show", f"{introduction}:{path}").encode("utf-8"):
-            raise AdmissionError(f"immutable review artifact changed: {path}")
+            # Retiring history is allowed, but trusted-base verdicts still
+            # govern until a valid superseding report exists.
+            try:
+                raw = _git(root, "show", f"{base}:{path}").encode("utf-8")
+            except AdmissionError:
+                outcome.skipped_reports.append(
+                    (path, "absent at integration base and candidate head")
+                )
+                continue
+            carried_from_base.add(path)
+        else:
+            if raw != _git(root, "show", f"{introduction}:{path}").encode("utf-8"):
+                raise AdmissionError(f"immutable review artifact changed: {path}")
         try:
             _validate_current_envelope(root, raw, path, kinds)
             report = pair.parse_verification_report_committed_bytes(root, path, raw)
@@ -393,7 +402,7 @@ def evaluate(root: Path, base: str, head: str) -> Outcome:
                     root, report, request, reports_by_ref
                 )
                 failed_commits &= outcome.authority_commits.keys()
-                if failed_commits:
+                if failed_commits or path in carried_from_base:
                     outcome.blocking_failures.append((path, frozenset(failed_commits)))
             continue
         if request.risk_class != pair.HIGH_RISK_CONTROL:

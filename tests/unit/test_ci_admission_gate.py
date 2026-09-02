@@ -76,7 +76,7 @@ def test_invalid_reviewer_identity_cannot_admit(tmp_path) -> None:
     assert any("reviewer model family" in reason for _path, reason in outcome.skipped_reports)
 
 
-def test_deleted_historical_reports_are_not_replayed(tmp_path) -> None:
+def test_report_added_then_deleted_in_range_is_not_evidence(tmp_path) -> None:
     root = tmp_path / "repo"
     base = init_repo(root)
     candidate = commit(root, {"pipeline/control.py": "enabled = True\n"}, "candidate")
@@ -87,7 +87,48 @@ def test_deleted_historical_reports_are_not_replayed(tmp_path) -> None:
     new_head = git(root, "rev-parse", "HEAD")
     outcome = gate.evaluate(root, base, new_head)
     assert not outcome.admitted
-    assert outcome.skipped_reports == []
+    assert outcome.skipped_reports == [
+        (report_path, "absent at integration base and candidate head")
+    ]
+
+
+def test_deleted_trusted_base_fail_remains_blocking_outside_its_range(tmp_path) -> None:
+    root = tmp_path / "repo"
+    original_base = init_repo(root)
+    failed_head = commit(
+        root, {"pipeline/old_control.py": "enabled = False\n"}, "failed candidate"
+    )
+    failed_request, failed_request_commit = add_request(
+        root, original_base, failed_head
+    )
+    failed_report, _failed_report_commit = add_report(
+        root, failed_request, failed_request_commit, verdict="FAIL"
+    )
+    integration_base = git(root, "rev-parse", "HEAD")
+
+    (root / "pipeline/new_control.py").write_text("enabled = True\n", encoding="utf-8")
+    git(root, "add", "--", "pipeline/new_control.py")
+    git(root, "rm", "--", failed_report)
+    git(root, "commit", "-q", "-m", "replace failed control")
+    reviewed_head = git(root, "rev-parse", "HEAD")
+    request_path, request_commit = add_request(
+        root,
+        integration_base,
+        reviewed_head,
+        stamp="2026-09-02T10-02-00Z",
+    )
+    _report_path, candidate_head = add_report(
+        root,
+        request_path,
+        request_commit,
+        stamp="2026-09-02T10-03-00Z",
+    )
+
+    outcome = gate.evaluate(root, integration_base, candidate_head)
+
+    assert not outcome.admitted, gate.render(outcome)
+    assert outcome.uncovered == {}
+    assert outcome.blocking_failures == [(failed_report, frozenset())]
 
 
 def test_clean_merge_of_review_chain_inherits_coverage(tmp_path) -> None:
