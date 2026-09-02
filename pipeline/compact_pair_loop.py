@@ -84,6 +84,7 @@ class VerifyRequest:
     finding_refs: tuple[str, ...]
     remediates_failed_report: tuple[str, str] | None
     historical_remediation_base_compatibility: bool = False
+    compact_current_compatibility: bool = False
 
 
 @dataclass(frozen=True)
@@ -534,8 +535,20 @@ def _parse_verify_request_bytes(
     base = _one(lines, "Reviewed base: ", "Reviewed base")
     if SHA_RE.fullmatch(head) is None or SHA_RE.fullmatch(base) is None:
         raise CompactPairError("Reviewed base/head must be full lowercase commit SHAs")
-    author = _one(lines, "Author seat: ", "Author seat")
-    assigned = _one(lines, "Assigned operator: ", "Assigned operator")
+    author = _optional_one(lines, "Author seat: ", "Author seat")
+    assigned = _optional_one(lines, "Assigned operator: ", "Assigned operator")
+    compact_current = author is None and assigned is None
+    if compact_current:
+        if not app_route:
+            raise CompactPairError(
+                "legacy verify-request must declare Author seat and Assigned operator"
+            )
+        author = filename_author
+        assigned = filename_reviewer
+    elif author is None or assigned is None:
+        raise CompactPairError(
+            "verify-request must declare both Author seat and Assigned operator or neither"
+        )
     if author not in _READ_PAIR_SEATS or assigned not in _READ_OPERATOR_SEATS:
         raise CompactPairError("request author or assigned reviewer is not a pair seat")
     if author != filename_author or _envelope_sender(text) != author:
@@ -553,7 +566,8 @@ def _parse_verify_request_bytes(
         required=profile.requires_abuse_class_assessment and risk_class_explicit,
     )
     legacy = (
-        allow_frozen_legacy
+        not compact_current
+        and allow_frozen_legacy
         and _git_blob(root, LEGACY_VERBOSE_CUTOFF, path) is not None
         and _section_optional(lines, "## Finding Refs") is None
     )
@@ -596,6 +610,7 @@ def _parse_verify_request_bytes(
             if historical_remediation_base_compatibility is None
             else historical_remediation_base_compatibility
         ),
+        compact_current_compatibility=compact_current,
     )
 
 
@@ -1296,6 +1311,18 @@ def supersession_report_violations(
         violations.append("a report supersedes only a verdict for the same exact request")
         return violations
     if request.remediates_failed_report is None:
+        if request.compact_current_compatibility:
+            if superseded.verdict != "FAIL":
+                violations.append(
+                    "a compact different-request supersession must replace a FAIL"
+                )
+            if request.risk_class != superseded.risk_class:
+                violations.append("remediation Risk class changed")
+            if request.reviewed_base != superseded.reviewed_head:
+                violations.append(
+                    "remediation Reviewed base must equal the failed Reviewed head"
+                )
+            return violations
         violations.append(
             "a report supersedes only a verdict for the same exact request unless "
             "the different-request remediation request explicitly names the failed report"

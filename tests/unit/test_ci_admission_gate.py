@@ -327,6 +327,8 @@ def _land_remediation_pair(
     reviewed_base: str,
     reviewed_head: str,
     failed_report_commit: str,
+    *,
+    compact_current: bool = False,
 ) -> None:
     refs = (f"{EVIDENCE_PATH}@{_git(root, 'log', '--format=%H', '-1', '--', EVIDENCE_PATH)}",)
     request_path = REQUEST_PATH.replace("12-00-00", "12-20-00")
@@ -339,10 +341,19 @@ def _land_remediation_pair(
         finding_refs=refs,
     ).replace(
         "2026-08-07T12:00:00Z", "2026-08-07T12:20:00Z"
-    ).replace(
-        "Risk class: high-risk-control\n",
-        f"Risk class: high-risk-control\nRemediates failed report: {failed_ref}\n",
     )
+    if compact_current:
+        request_text = request_text.replace(
+            "Author seat: codex\n"
+            "Author model: gpt-5.6-sol\n"
+            "Assigned operator: claude\n",
+            "Author model: gpt-5.6-sol\n",
+        )
+    else:
+        request_text = request_text.replace(
+            "Risk class: high-risk-control\n",
+            f"Risk class: high-risk-control\nRemediates failed report: {failed_ref}\n",
+        )
     _commit_file(root, request_path, request_text, "review: request remediation")
     trigger = _git(root, "rev-parse", "HEAD")
     report_text = _report_text(
@@ -472,9 +483,35 @@ def test_member_route_cutover_opens_the_writer(tmp_path: Path) -> None:
     ) is None
 
 
+def test_compact_current_request_infers_members_from_canonical_path(
+    tmp_path: Path,
+) -> None:
+    root, base = _init_repo(tmp_path)
+    reviewed_head = _commit_file(
+        root, "pipeline/mailbox_writer.py", "POLICY = 1\n", "feat: writer policy"
+    )
+    _land_member_pair(
+        root,
+        base,
+        reviewed_head,
+        request_replacement=(
+            "Author seat: codex\n"
+            "Author model: gpt-5.6-sol\n"
+            "Assigned operator: claude\n",
+            "Author model: gpt-5.6-sol\n",
+        ),
+    )
+
+    outcome = gate.evaluate(root, base, _git(root, "rev-parse", "HEAD"))
+
+    assert outcome.admitted, gate.render(outcome)
+
+
 @pytest.mark.parametrize(
     ("request_replacement", "report_replacement", "report_path", "reason"),
     (
+        (("Author seat: codex\n", ""), None, MEMBER_REPORT_PATH,
+         "must declare both Author seat and Assigned operator or neither"),
         (("Author model: gpt-5.6-sol", "Author model: gemini-3.7-flash-high"), None,
          MEMBER_REPORT_PATH, "author model family does not match author member"),
         (None, ("Reviewer model: claude-opus-4-7", "Reviewer model: gpt-5.6-sol"),
@@ -592,6 +629,60 @@ def test_supersession_uses_explicit_candidate_head_when_checkout_stays_at_base(
     outcome = gate.evaluate(root, base, candidate_head)
 
     assert outcome.admitted, gate.render(outcome)
+
+
+def test_compact_current_remediation_supersedes_a_bound_fail(
+    tmp_path: Path,
+) -> None:
+    root, base = _init_repo(tmp_path)
+    reviewed_head = _commit_file(
+        root, "src/ordinary.py", "VALUE = 2\n", "feat: ordinary reviewed work"
+    )
+    _land_pair(root, base, reviewed_head, verdict="FAIL")
+    failed_report_commit = _git(root, "rev-parse", "HEAD")
+    fixed_head = _commit_file(
+        root, "pipeline/mailbox_writer.py", "POLICY = 1\n", "fix: authority control"
+    )
+    _land_remediation_pair(
+        root,
+        reviewed_head,
+        fixed_head,
+        failed_report_commit,
+        compact_current=True,
+    )
+
+    outcome = gate.evaluate(root, base, _git(root, "rev-parse", "HEAD"))
+
+    assert outcome.admitted, gate.render(outcome)
+
+
+def test_compact_current_remediation_cannot_skip_the_failed_head(
+    tmp_path: Path,
+) -> None:
+    root, base = _init_repo(tmp_path)
+    failed_head = _commit_file(
+        root, "src/ordinary.py", "VALUE = 2\n", "feat: ordinary reviewed work"
+    )
+    _land_pair(root, base, failed_head, verdict="FAIL")
+    failed_report_commit = _git(root, "rev-parse", "HEAD")
+    fixed_head = _commit_file(
+        root, "pipeline/mailbox_writer.py", "POLICY = 1\n", "fix: authority control"
+    )
+    _land_remediation_pair(
+        root,
+        base,
+        fixed_head,
+        failed_report_commit,
+        compact_current=True,
+    )
+
+    outcome = gate.evaluate(root, base, _git(root, "rev-parse", "HEAD"))
+
+    assert not outcome.admitted, gate.render(outcome)
+    assert any(
+        "remediation Reviewed base must equal the failed Reviewed head" in reason
+        for _, reason in outcome.skipped_reports
+    )
 
 
 def test_explicit_candidate_head_rejects_request_from_sibling_history(
@@ -865,6 +956,36 @@ def test_candidate_only_request_and_report_admit_while_checkout_stays_at_base(
     assert [coverage.verdict for coverage in outcome.coverages] == ["GO"]
 
 
+def test_deleted_historical_report_is_read_from_trusted_base(
+    tmp_path: Path,
+) -> None:
+    root, original_base = _init_repo(tmp_path)
+    historical_head = _commit_file(
+        root, "pipeline/old_policy.py", "VALUE = 1\n", "feat: old policy"
+    )
+    _land_pair(root, original_base, historical_head, finding_refs=())
+    integration_base = _git(root, "rev-parse", "HEAD")
+    _commit_file(
+        root, "pipeline/new_policy.py", "VALUE = 2\n", "feat: new policy"
+    )
+    _git(root, "rm", "-q", REPORT_PATH)
+    _git(root, "commit", "-q", "-m", "chore: retire historical report")
+    reviewed_head = _git(root, "rev-parse", "HEAD")
+    _land_pair(
+        root,
+        integration_base,
+        reviewed_head,
+        request_path=SECOND_REQUEST_PATH,
+        report_path=SECOND_REPORT_PATH,
+        timestamps=("2026-08-07T12:20:00Z", "2026-08-07T12:30:00Z"),
+        finding_refs=(),
+    )
+
+    outcome = gate.evaluate(root, integration_base, _git(root, "rev-parse", "HEAD"))
+
+    assert outcome.admitted, gate.render(outcome)
+
+
 @pytest.mark.parametrize("fresh_verdict", ("GO", "NITS"))
 @pytest.mark.parametrize("tamper", ("delete", "modify", "type"))
 def test_unsuperseded_current_fail_blocks_a_fresh_admitting_verdict(
@@ -905,8 +1026,13 @@ def test_unsuperseded_current_fail_blocks_a_fresh_admitting_verdict(
         (root / REPORT_PATH).symlink_to("missing-report")
         _git(root, "add", REPORT_PATH)
     _git(root, "commit", "-q", "-m", f"test: {tamper} immutable FAIL")
-    with pytest.raises(gate.AdmissionError, match="immutable review artifact"):
-        gate.evaluate(root, tamper_base, _git(root, "rev-parse", "HEAD"))
+    if tamper == "delete":
+        outcome = gate.evaluate(root, tamper_base, _git(root, "rev-parse", "HEAD"))
+        assert not outcome.admitted, gate.render(outcome)
+        assert [path for path, _ in outcome.blocking_failures] == [REPORT_PATH]
+    else:
+        with pytest.raises(gate.AdmissionError, match="immutable review artifact"):
+            gate.evaluate(root, tamper_base, _git(root, "rev-parse", "HEAD"))
 
 
 def test_remediation_coverage_inherits_only_the_superseded_reports_range(
