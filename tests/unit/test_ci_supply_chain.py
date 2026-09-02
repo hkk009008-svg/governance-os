@@ -24,12 +24,17 @@ def test_actions_are_pinned_and_permissions_are_read_only(repo_root) -> None:
     assert "persist-credentials: true" not in workflows
 
 
-def test_ci_has_one_real_gate_without_advisory_greenwashing(repo_root) -> None:
+def test_ci_produces_every_protected_context_without_advisory_greenwashing(
+    repo_root,
+) -> None:
     workflow = _read(repo_root, "ci.yml")
-    assert workflow.count("runs-on:") == 1
+    assert workflow.count("runs-on:") == 2
     assert "continue-on-error" not in workflow
     assert "|| true" not in workflow
-    assert "governance_verify_all.py --fast" in workflow
+    assert "name: ci_smoke (governance gates + runtime invariants)" in workflow
+    assert "name: pytest tests (Python ${{ matrix.python-version }})" in workflow
+    assert "python-version: ['3.11', '3.12', '3.13']" in workflow
+    assert "bin/pipeline check --fast" in workflow
     assert "python -m pytest tests --tb=short -q" in workflow
 
 
