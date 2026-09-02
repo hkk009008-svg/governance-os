@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Desktop-team coordination-state linter.
 
-The default view checks immutable mailbox integrity and current formal-review
-state.  ``--history`` additionally renders retired cursor, unread, handoff,
-and pre-cutover review diagnostics without changing the archived evidence.
+The default view checks immutable mailbox integrity, live cursors, and current
+formal-review state. ``--history`` additionally renders unread, handoff, and
+pre-cutover review diagnostics without changing the archived evidence.
 
 Public API
 ----------
@@ -161,69 +161,58 @@ def live_verify_review_state(
 
     cutover = codex_protocol_model.CURRENT_REVIEW_FAMILY_CUTOVER
     commits = projection.commits
-
-    def epoch(commit: str | None, label: str) -> tuple[str, str | None]:
-        if commit is None:
-            return "problem", f"{label} has no introduction commit"
-        try:
-            commits.require_commit(cutover, "formal-review live cutover")
-            commits.require_commit(commit, label)
-            if commit == cutover or commits.is_ancestor(commit, cutover):
-                return "history", None
-            if commits.is_ancestor(cutover, commit):
-                return "live", None
-        except git_commit_projection.CommitGraphProjectionError as exc:
-            return "problem", f"{label} cannot be classified: {exc}"
-        return "problem", f"{label} is unrelated to the formal-review cutover"
-
     problems = [review_state.problem] if review_state.problem else []
+    try:
+        commits.require_commit(cutover, "formal-review live cutover")
+    except git_commit_projection.CommitGraphProjectionError as exc:
+        problems.append(f"formal-review live cutover cannot be classified: {exc}")
+
+    def live(commit: str | None, label: str) -> bool:
+        if commit is None:
+            problems.append(f"{label} has no introduction commit")
+            return False
+        try:
+            commits.require_commit(commit, label)
+            if commits.is_ancestor(commit, cutover):
+                return False
+            if commits.is_ancestor(cutover, commit):
+                return True
+        except git_commit_projection.CommitGraphProjectionError as exc:
+            problems.append(f"{label} cannot be classified: {exc}")
+            return False
+        problems.append(f"{label} is unrelated to the formal-review cutover")
+        return False
+
+    def route(path: str) -> tuple[str, str, str] | None:
+        identity = _review_event_identity(path)
+        if identity is None or protocol_mailbox.formal_review_route_problem(
+            identity[2], identity[0], identity[1]
+        ) is not None:
+            return None
+        return identity
+
     pending: list[CurrentVerifyRequest] = []
     for request in review_state.pending:
-        classification, problem = epoch(request.commit, "verify-request commit")
-        if problem is not None:
-            problems.append(problem)
-            continue
-        if classification != "live":
+        if not live(request.commit, "verify-request commit"):
             continue
         if not request.valid:
             pending.append(request)
             continue
-        identity = _review_event_identity(request.path)
-        if (
-            identity is not None
-            and protocol_mailbox.formal_review_route_problem(
-                identity[2], identity[0], identity[1]
-            ) is None
-            and request.assigned_operator == identity[1]
-        ):
+        identity = route(request.path)
+        if identity is not None and request.assigned_operator == identity[1]:
             pending.append(request)
 
     failed: list[FailedVerifyRequest] = []
     for item in review_state.failed:
-        request_epoch, request_problem = epoch(
-            item.request_commit, "failed-review request commit"
-        )
-        report_epoch, report_problem = epoch(
-            item.report_commit, "failed-review report commit"
-        )
-        for problem in (request_problem, report_problem):
-            if problem is not None:
-                problems.append(problem)
-        if request_problem is not None or report_problem is not None:
+        if not all((
+            live(item.request_commit, "failed-review request commit"),
+            live(item.report_commit, "failed-review report commit"),
+        )):
             continue
-        if request_epoch != "live" or report_epoch != "live":
-            continue
-        request_identity = _review_event_identity(item.request_path)
-        report_identity = _review_event_identity(item.report_path)
+        request_identity, report_identity = route(item.request_path), route(item.report_path)
         if (
             request_identity is not None
             and report_identity is not None
-            and protocol_mailbox.formal_review_route_problem(
-                request_identity[2], request_identity[0], request_identity[1]
-            ) is None
-            and protocol_mailbox.formal_review_route_problem(
-                report_identity[2], report_identity[0], report_identity[1]
-            ) is None
             and item.assigned_operator == request_identity[1]
             and report_identity[0] == request_identity[1]
             and report_identity[1] in {request_identity[0], "all"}
@@ -1906,8 +1895,7 @@ def run(coord_root: Path | str, since: str = "2026-06-11",
         now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     names = _event_names(coord_root)
     issues: list[CoordIssue] = []
-    if history:
-        issues += _check_cursors(coord_root, now, names)
+    issues += _check_cursors(coord_root, now, names)
     issues += _check_events(coord_root, since, names)
     # The bus lives at the git repo root; coord_root is <repo>/coordination, so its
     # parent is the repo root unless an explicit git_root is given (ADR-062).
@@ -1980,7 +1968,7 @@ def main(argv=None) -> int:
     ap.add_argument(
         "--history",
         action="store_true",
-        help="include retired cursor, unread, handoff, and pre-cutover review diagnostics",
+        help="include unread, handoff, and pre-cutover review diagnostics",
     )
     args = ap.parse_args(argv)
 

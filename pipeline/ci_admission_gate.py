@@ -316,27 +316,13 @@ def _coverage_commits(
 
 
 def _commit_parents(root: Path, commit: str) -> tuple[str, ...]:
-    return tuple(
-        _git(root, "show", "-s", "--format=%P", commit).strip().split()
-    )
+    return tuple(_git(root, "show", "-s", "--format=%P", commit).split())
 
 
-def _commit_paths(root: Path, parent: str, commit: str) -> tuple[str, ...]:
-    return tuple(
-        sorted(
-            line.strip()
-            for line in _git(
-                root,
-                "diff-tree",
-                "--no-commit-id",
-                "--name-only",
-                "-r",
-                parent,
-                commit,
-            ).splitlines()
-            if line.strip()
-        )
-    )
+def _only_commit_path(root: Path, parent: str, commit: str, path: str) -> bool:
+    return _git(
+        root, "diff-tree", "--no-commit-id", "--name-only", "-r", parent, commit
+    ).splitlines() == [path]
 
 
 def _inherited_clean_merge_commits(
@@ -347,25 +333,22 @@ def _inherited_clean_merge_commits(
 ) -> frozenset[str]:
     """Cover only a byte-clean merge of one exact reviewed artifact pair."""
 
-    if _commit_parents(root, report.request_commit) != (report.reviewed_head,):
-        return frozenset()
-    if _commit_paths(
-        root, report.reviewed_head, report.request_commit
-    ) != (report.request_path,):
-        return frozenset()
-    if _commit_parents(root, report_commit) != (report.request_commit,):
-        return frozenset()
-    if _commit_paths(root, report.request_commit, report_commit) != (report.path,):
+    if not (
+        _commit_parents(root, report.request_commit) == (report.reviewed_head,)
+        and _only_commit_path(
+            root, report.reviewed_head, report.request_commit, report.request_path
+        )
+        and _commit_parents(root, report_commit) == (report.request_commit,)
+        and _only_commit_path(root, report.request_commit, report_commit, report.path)
+    ):
         return frozenset()
 
-    inherited: set[str] = set()
     report_tree = _git(root, "rev-parse", f"{report_commit}^{{tree}}").strip()
-    for commit in candidates:
-        if _commit_parents(root, commit) != (report.reviewed_base, report_commit):
-            continue
-        if _git(root, "rev-parse", f"{commit}^{{tree}}").strip() == report_tree:
-            inherited.add(commit)
-    return frozenset(inherited)
+    return frozenset(
+        commit for commit in candidates
+        if _commit_parents(root, commit) == (report.reviewed_base, report_commit)
+        and _git(root, "rev-parse", f"{commit}^{{tree}}").strip() == report_tree
+    )
 
 
 def evaluate(root: Path, base: str, head: str) -> Outcome:

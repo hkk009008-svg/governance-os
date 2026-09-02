@@ -607,8 +607,7 @@ def test_heading_free_event_still_enforces_filename_envelope_and_cursor_guards(
 
     current_kinds = {issue.kind for issue in current_issues}
     history_kinds = {issue.kind for issue in history_issues}
-    assert {"self_addressed", "when_mismatch"} <= current_kinds
-    assert "cursor_unparseable" not in current_kinds
+    assert {"cursor_unparseable", "self_addressed", "when_mismatch"} <= current_kinds
     assert {"cursor_unparseable", "self_addressed", "when_mismatch"} <= history_kinds
     assert "missing_end_trigger" not in history_kinds
 
@@ -2131,7 +2130,6 @@ def test_live_repo_defaults_to_current_diagnostics_and_history_is_explicit(
 
     retired_kinds = {
         "grandfathered_review_history",
-        "failed_current_verify_request",
         "unread",
     }
     assert not [issue for issue in current if issue.kind in retired_kinds]
