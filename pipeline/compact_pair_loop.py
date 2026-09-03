@@ -652,7 +652,10 @@ def _main(argv: list[str] | None = None) -> int:
     candidate.add_argument("--repo-root", required=True, type=Path)
     candidate.add_argument("--candidate", required=True)
     candidate.add_argument("--final-relative", required=True)
-    compose = commands.add_parser("compose-request")
+    compose = commands.add_parser(
+        "compose-request",
+        description="Compose a verify-request; required Outcome text is read from stdin.",
+    )
     compose.add_argument("--repo-root", required=True, type=Path)
     compose.add_argument("--author", required=True)
     compose.add_argument("--author-model", required=True)

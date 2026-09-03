@@ -36,6 +36,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -464,7 +465,7 @@ def evaluate(root: Path, base: str, head: str) -> Outcome:
     return outcome
 
 
-def render(outcome: Outcome) -> str:
+def render(outcome: Outcome, *, verbose: bool = False) -> str:
     lines = [
         "ADMISSION GATE — risk-aware integration check "
         f"({outcome.base[:12]}..{outcome.head[:12]})"
@@ -483,8 +484,18 @@ def render(outcome: Outcome) -> str:
             f"  admissible report: {coverage.path} "
             f"[{coverage.verdict}, {coverage.risk_class}]"
         )
-    for path, reason in outcome.skipped_reports:
-        lines.append(f"  non-admitting report: {path} — {reason}")
+    if verbose:
+        for path, reason in outcome.skipped_reports:
+            lines.append(f"  non-admitting report: {path} — {reason}")
+    elif outcome.skipped_reports:
+        lines.append(
+            f"  non-admitting reports: {len(outcome.skipped_reports)} "
+            "(use --verbose for paths)"
+        )
+        for reason, count in Counter(
+            reason for _path, reason in outcome.skipped_reports
+        ).most_common():
+            lines.append(f"    {count} x {reason}")
     for path, commits in outcome.blocking_failures:
         lines.append(
             f"  active FAIL: {path} [{len(commits)} authority commit(s) in range]"
@@ -513,6 +524,11 @@ def main(argv: list[str] | None = None) -> int:
         help="admitted range base (default: origin/main, then local main)",
     )
     parser.add_argument("--head", help="admitted range head (default: HEAD)")
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="list every non-admitting historical report",
+    )
     args = parser.parse_args(argv)
     root = args.root.resolve()
     try:
@@ -526,7 +542,7 @@ def main(argv: list[str] | None = None) -> int:
     except AdmissionError as exc:
         print(f"ADMISSION GATE — environment error: {exc}", file=sys.stderr)
         return 2
-    print(render(outcome))
+    print(render(outcome, verbose=args.verbose))
     return 0 if outcome.admitted else 1
 
 

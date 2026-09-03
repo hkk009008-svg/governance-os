@@ -83,7 +83,7 @@ def check_apps(applications: Path = Path("/Applications")) -> list[Result]:
 
 def _load_member_config(root: Path, member: str) -> dict:
     if member == "agy":
-        return load_agy_plugin_config(root)[0]
+        return load_agy_plugin_config(root)
     path = root / CONFIG_PATHS[member]
     payload = (
         tomllib.loads(path.read_text(encoding="utf-8"))

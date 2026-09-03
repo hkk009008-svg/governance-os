@@ -9,6 +9,7 @@ import subprocess
 from pathlib import Path
 from typing import NamedTuple
 
+import git_runner
 from team_mcp import tool_definitions
 
 
@@ -109,7 +110,7 @@ def _claude(root: Path, text: str) -> tuple[bool, str]:
 def _agy_workspace(
     root: Path, storage: Path | tuple[Path, ...], projects: Path,
 ) -> tuple[bool, str]:
-    expected = root.resolve().as_uri()
+    expected = {path.as_uri() for path in _registration_roots(root)}
     for storage_root in _many(storage):
         for path in storage_root.glob("*/workspace.json"):
             try:
@@ -118,7 +119,7 @@ def _agy_workspace(
                 continue
             if isinstance(payload, dict) and payload.get(
                 "folder", payload.get("workspace")
-            ) == expected:
+            ) in expected:
                 return True, "Antigravity has registered this repository workspace"
     for path in projects.glob("*.json"):
         try:
@@ -126,15 +127,36 @@ def _agy_workspace(
         except (OSError, json.JSONDecodeError, KeyError, TypeError):
             continue
         if isinstance(resources, list) and any(
-            item.get("gitFolder", {}).get("folderUri") == expected
+            item.get("gitFolder", {}).get("folderUri") in expected
             for item in resources if isinstance(item, dict)
         ):
             return True, "Antigravity has registered this repository project"
     return False, "Antigravity has not registered this repository project or workspace"
 
 
-def load_agy_plugin_config(root: Path) -> tuple[dict, int]:
-    """Load the exact workspace-plugin binding and its newest source mtime."""
+def _registration_roots(root: Path) -> tuple[Path, ...]:
+    """Return this checkout and its canonical primary worktree when linked."""
+    resolved = root.resolve()
+    roots = [resolved]
+    if not (resolved / ".git").exists():
+        return tuple(roots)
+    result = git_runner.run_git(
+        resolved,
+        ["rev-parse", "--path-format=absolute", "--git-common-dir"],
+        mode="dashboard",
+        text=True,
+        timeout=5,
+    )
+    if result.returncode == 0:
+        common = Path(result.stdout.strip()).resolve()
+        primary = common.parent
+        if primary not in roots:
+            roots.append(primary)
+    return tuple(roots)
+
+
+def load_agy_plugin_config(root: Path) -> dict:
+    """Load the exact workspace-plugin binding."""
     paths = (root / AGY_PLUGIN_MANIFEST, root / AGY_PLUGIN_CONFIG)
     for path in paths:
         try:
@@ -156,13 +178,13 @@ def load_agy_plugin_config(root: Path) -> tuple[dict, int]:
     expected = {"command": "./bin/pipeline", "args": ["team", "serve", "--member", "agy"], "cwd": "."}
     if config != expected:
         raise ValueError("Antigravity pipeline-team binding is not the exact member=agy adapter")
-    return config, max(path.stat().st_mtime_ns for path in paths)
+    return config
 
 
 def _agy_tools(root: Path, tool_roots: Path | tuple[Path, ...]) -> tuple[bool, str]:
     """Require native Antigravity tool-cache evidence newer than the plugin."""
     try:
-        _config, configured_at = load_agy_plugin_config(root)
+        load_agy_plugin_config(root)
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         return False, f"Antigravity workspace plugin binding is invalid: {exc}"
     expected = _tool_payloads()
@@ -177,10 +199,8 @@ def _agy_tools(root: Path, tool_roots: Path | tuple[Path, ...]) -> tuple[bool, s
                 raise ValueError("unexpected tool inventory")
             for tool in TEAM_TOOLS:
                 path = directory / f"{tool}.json"
-                info = _owned(path, stat.S_ISREG)
-                if info.st_mtime_ns < configured_at or json.loads(
-                    path.read_text(encoding="utf-8")
-                ) != expected[tool]:
+                _owned(path, stat.S_ISREG)
+                if json.loads(path.read_text(encoding="utf-8")) != expected[tool]:
                     raise ValueError("stale or mismatched tool")
         except (OSError, ValueError, json.JSONDecodeError):
             continue

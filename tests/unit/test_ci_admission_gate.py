@@ -92,6 +92,30 @@ def test_report_added_then_deleted_in_range_is_not_evidence(tmp_path) -> None:
     ]
 
 
+def test_render_summarizes_skipped_reports_unless_verbose() -> None:
+    outcome = gate.Outcome(
+        base="a" * 40,
+        head="b" * 40,
+        authority_commits={"c" * 40: ("pipeline/control.py",)},
+        skipped_reports=[
+            ("first-report.md", "artifact path is not canonical"),
+            ("second-report.md", "artifact path is not canonical"),
+        ],
+        blocking_failures=[("active-fail.md", frozenset({"c" * 40}))],
+        uncovered={"c" * 40: ("pipeline/control.py",)},
+    )
+
+    compact = gate.render(outcome)
+    verbose = gate.render(outcome, verbose=True)
+
+    assert "non-admitting reports: 2" in compact
+    assert "2 x artifact path is not canonical" in compact
+    assert "first-report.md" not in compact
+    assert "first-report.md" in verbose
+    assert "active FAIL: active-fail.md" in compact
+    assert "cccccccccccc touches pipeline/control.py" in compact
+
+
 def test_deleted_trusted_base_fail_remains_blocking_outside_its_range(tmp_path) -> None:
     root = tmp_path / "repo"
     original_base = init_repo(root)

@@ -47,3 +47,9 @@ def test_live_subcommands_answer_help_without_running() -> None:
         result = run(*arguments)
         assert result.returncode == 0, result.stderr
         assert "usage:" in result.stdout.lower()
+
+
+def test_review_request_help_names_required_stdin_outcome() -> None:
+    result = run("review", "request", "--help")
+    assert result.returncode == 0
+    assert "required Outcome text is read from stdin" in result.stdout
