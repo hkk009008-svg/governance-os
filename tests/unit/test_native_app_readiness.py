@@ -137,6 +137,42 @@ def test_both_antigravity_workspace_storage_roots_are_supported(
     assert ok and "workspace" in detail
 
 
+def test_linked_worktree_accepts_primary_workspace_registration(
+    tmp_path: Path,
+) -> None:
+    primary = tmp_path / "primary"
+    linked = tmp_path / "linked"
+    primary.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=primary, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"],
+        cwd=primary,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Test"], cwd=primary, check=True
+    )
+    (primary / "tracked.txt").write_text("base\n", encoding="utf-8")
+    subprocess.run(["git", "add", "tracked.txt"], cwd=primary, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "base"], cwd=primary, check=True)
+    subprocess.run(
+        ["git", "worktree", "add", "-q", "--detach", str(linked)],
+        cwd=primary,
+        check=True,
+    )
+    storage = tmp_path / "storage" / "hash"
+    storage.mkdir(parents=True)
+    (storage / "workspace.json").write_text(
+        json.dumps({"folder": primary.resolve().as_uri()}), encoding="utf-8"
+    )
+
+    ok, detail = native._agy_workspace(
+        linked, tmp_path / "storage", tmp_path / "projects"
+    )
+
+    assert ok and "workspace" in detail
+
+
 def test_native_cli_checks_reject_wrong_command_and_scope(
     tmp_path: Path, monkeypatch,
 ) -> None:
@@ -160,7 +196,7 @@ def test_native_cli_checks_reject_wrong_command_and_scope(
     assert not rows["claude"].ok
 
 
-def test_stale_native_tool_inventory_is_rejected(tmp_path: Path) -> None:
+def test_identical_native_tools_survive_newer_checkout_mtime(tmp_path: Path) -> None:
     tools = tmp_path / "tools"
     _native_tools(tmp_path, tools)
     config = tmp_path / native.AGY_PLUGIN_CONFIG
@@ -169,7 +205,7 @@ def test_stale_native_tool_inventory_is_rejected(tmp_path: Path) -> None:
 
     ok, detail = native._agy_tools(tmp_path, tools)
 
-    assert not ok and "no fresh" in detail
+    assert ok and "exact" in detail
 
 
 def test_tampered_native_tool_schema_is_rejected(tmp_path: Path) -> None:

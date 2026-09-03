@@ -14,7 +14,7 @@ import codex_protocol_model as model
         ("codex-openai-gpt-5.6-terra", "gpt"),
         ("claude-opus-5", "claude"),
         ("anthropic-claude-sonnet-5", "claude"),
-        ("Gemini 3.7 Flash (High)", "gemini"),
+        ("Gemini 3.8 Flash (High)", "gemini"),
         ("xai-grok-4.6", "grok"),
     ],
 )
@@ -33,8 +33,15 @@ def test_unknown_or_malformed_models_fail_closed(model_id: str) -> None:
 
 
 def test_review_admission_distinguishes_author_and_reviewer() -> None:
-    assert model.model_is_current_author("gemini-3.7-flash-high")
-    assert not model.model_is_current_reviewer("gemini-3.7-flash-high")
+    assert model.model_is_current_author("gemini-3.8-flash-high")
+    assert not model.model_is_current_reviewer("gemini-3.8-flash-high")
+    for retired in (
+        "gemini-3.7-flash-high",
+        "Gemini 3.7 Flash (High)",
+        "codex-google-gemini-3.7-flash-high",
+        "gemini-3.1-pro-high",
+    ):
+        assert not model.model_is_current_author(retired)
     assert model.model_is_current_reviewer("claude-opus-5")
     assert model.model_is_current_reviewer("gpt-5.6-sol")
 
@@ -43,7 +50,7 @@ def test_high_risk_pair_requires_current_different_families() -> None:
     assert model.models_are_current_review_pair("gpt-5.6-sol", "claude-opus-5")
     assert not model.models_are_current_review_pair("gpt-5.6-sol", "gpt-5.6-terra")
     assert not model.models_are_current_review_pair(
-        "gpt-5.6-sol", "gemini-3.7-flash-high"
+        "gpt-5.6-sol", "gemini-3.8-flash-high"
     )
 
 

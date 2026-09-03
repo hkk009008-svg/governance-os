@@ -43,15 +43,16 @@ def test_project_adapters_carry_no_role_or_effect_authority() -> None:
 
 
 def test_agy_models_may_author_but_not_issue_the_accepting_review() -> None:
+    assert protocol_model.model_family("gemini-3.8-flash-high") == "gemini"
     assert protocol_model.model_family("gemini-3.7-flash-high") == "gemini"
     assert protocol_model.models_are_independent(
-        "gpt-5.6-luna", "gemini-3.7-flash-high"
+        "gpt-5.6-luna", "gemini-3.8-flash-high"
     )
     assert not protocol_model.models_are_current_review_pair(
-        "gpt-5.6-luna", "gemini-3.7-flash-high"
+        "gpt-5.6-luna", "gemini-3.8-flash-high"
     )
     assert protocol_model.models_are_current_review_pair(
-        "gemini-3.7-flash-high", "claude-opus-4-7"
+        "gemini-3.8-flash-high", "claude-opus-4-7"
     )
 
 

@@ -123,7 +123,7 @@ def test_agy_may_author_but_not_publish_verdict(tmp_path) -> None:
         "agy",
         "claude",
         "verify-request",
-        request_body(base, head, author_model="gemini-3.7-flash-high"),
+        request_body(base, head, author_model="gemini-3.8-flash-high"),
     )
     request = pair._parse_request_bytes(root, path, text.encode(), "")
     assert pair.validate_request_candidate(root, request) == []
@@ -172,7 +172,7 @@ def test_report_recipient_must_match_author(tmp_path) -> None:
     root = tmp_path / "repo"
     base = init_repo(root)
     head = _reviewed_change(root, base)
-    request_path, request_commit = add_request(root, base, head, author="agy", author_model="gemini-3.7-flash-high")
+    request_path, request_commit = add_request(root, base, head, author="agy", author_model="gemini-3.8-flash-high")
     report_path, _ = add_report(
         root, request_path, request_commit, recipient="codex"
     )
