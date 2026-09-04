@@ -154,18 +154,25 @@ def test_report_rejects_reviewer_model_laundering(tmp_path) -> None:
     assert any("different admitted model families" in item for item in violations)
 
 
-def test_go_requires_executed_evidence(tmp_path) -> None:
+@pytest.mark.parametrize("verdict", ("GO", "NITS"))
+def test_admitting_verdict_requires_executed_evidence(
+    tmp_path, verdict: str
+) -> None:
     root = tmp_path / "repo"
     base = init_repo(root)
     head = _reviewed_change(root, base)
     request_path, request_commit = add_request(root, base, head)
-    body = report_body(request_path, request_commit).replace("$ pytest -q\n→ passed", "tests passed")
+    body = report_body(
+        request_path, request_commit, verdict=verdict
+    ).replace("$ pytest -q\n→ passed", "tests passed")
     path, text = event(
         "2026-09-02T10-01-00Z", "claude", "codex", "verification-report", body
     )
     commit(root, {path: text}, "report")
     report = pair.parse_verification_report(root, path)
-    assert "GO requires command and output evidence" in pair.validate_report(root, report)
+    assert "admitting verdict requires command and output evidence" in pair.validate_report(
+        root, report
+    )
 
 
 def test_report_recipient_must_match_author(tmp_path) -> None:

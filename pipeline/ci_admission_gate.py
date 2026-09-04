@@ -90,7 +90,6 @@ AUTHORITY_SURFACES: tuple[str, ...] = (
 
 _MAILBOX_SENT = "coordination/mailbox/sent/"
 _REPORT_SUFFIX = "-verification-report.md"
-_ADMITTING_VERDICTS = frozenset({"GO", "NITS"})
 
 
 class AdmissionError(RuntimeError):
@@ -411,7 +410,7 @@ def evaluate(root: Path, base: str, head: str) -> Outcome:
         if (path, introductions[path]) in superseded:
             outcome.skipped_reports.append((path, "superseded by a later report"))
             continue
-        if report.verdict not in _ADMITTING_VERDICTS:
+        if report.verdict not in pair.ADMITTING_VERDICTS:
             outcome.skipped_reports.append(
                 (path, f"verdict {report.verdict} does not admit")
             )

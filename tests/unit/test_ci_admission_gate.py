@@ -1,7 +1,15 @@
 from __future__ import annotations
 
 import ci_admission_gate as gate
-from formal_review_support import add_report, add_request, commit, git, init_repo
+from formal_review_support import (
+    add_report,
+    add_request,
+    commit,
+    event,
+    git,
+    init_repo,
+    report_body,
+)
 
 
 def test_range_without_authority_surface_is_admitted(tmp_path) -> None:
@@ -32,6 +40,33 @@ def test_high_risk_cross_family_go_admits_exact_range(tmp_path) -> None:
     assert outcome.admitted
     assert set(outcome.authority_commits) == {candidate}
     assert len(outcome.coverages) == 1
+
+
+def test_evidence_free_nits_cannot_admit_authority_surface(tmp_path) -> None:
+    root = tmp_path / "repo"
+    base = init_repo(root)
+    candidate = commit(root, {"pipeline/control.py": "enabled = True\n"}, "candidate")
+    request_path, request_commit = add_request(root, base, candidate)
+    body = report_body(
+        request_path, request_commit, verdict="NITS"
+    ).replace("$ pytest -q\n→ passed", "tests not executed")
+    report_path, report_text = event(
+        "2026-09-02T10-01-00Z",
+        "claude",
+        "codex",
+        "verification-report",
+        body,
+    )
+    report_commit = commit(root, {report_path: report_text}, "report")
+
+    outcome = gate.evaluate(root, base, report_commit)
+
+    assert not outcome.admitted
+    assert candidate in outcome.uncovered
+    assert any(
+        "admitting verdict requires command and output evidence" in reason
+        for _path, reason in outcome.skipped_reports
+    )
 
 
 def test_material_review_does_not_admit_authority_surface(tmp_path) -> None:

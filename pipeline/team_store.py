@@ -22,8 +22,11 @@ MAX_MESSAGE_ID = (1 << 53) - 1
 MAX_WAIT_SECONDS = 30.0
 MAX_READ_LIMIT = 100
 IDENTITY_ASSURANCE = "configured member label; not app or model attestation"
-CURSOR_SEMANTICS = "messages replay for the same after_id; advancing after_id " \
-    "acknowledges addressed messages through that cursor"
+CURSOR_SEMANTICS = (
+    "messages replay for the same after_id; advancing after_id acknowledges "
+    "addressed messages through that cursor and is allowed only through a cursor "
+    "returned by an earlier wait or a gap containing no unread addressed messages"
+)
 CAPABILITIES = {
     "codex": ("parallel-task-orchestration", "isolated-worktrees", "long-running-goals", "workspace-implementation", "tests-and-integrations"),
     "claude": ("large-context-reasoning", "independent-diff-review", "native-claude-session-messaging", "workspace-implementation", "tests-and-visual-review"),
@@ -223,6 +226,11 @@ class Store:
                     member TEXT NOT NULL CHECK (member IN ('codex','claude','agy')),
                     delivered_at TEXT NOT NULL, PRIMARY KEY(message_id,member)
                 ) WITHOUT ROWID;
+                CREATE TABLE IF NOT EXISTS cursor_frontiers (
+                    member TEXT PRIMARY KEY CHECK (member IN ('codex','claude','agy')),
+                    message_id INTEGER NOT NULL
+                        CHECK(message_id BETWEEN 0 AND {MAX_MESSAGE_ID})
+                ) WITHOUT ROWID;
                 """
             )
             identity = str(self.common_dir)
@@ -241,6 +249,12 @@ class Store:
             ).fetchone()[0]
             if high_water > MAX_MESSAGE_ID:
                 raise TeamError("team store contains a non-portable message id")
+            connection.execute(
+                "INSERT INTO cursor_frontiers(member,message_id) "
+                "SELECT member,MAX(message_id) FROM deliveries GROUP BY member "
+                "ON CONFLICT(member) DO UPDATE SET message_id="
+                "MAX(cursor_frontiers.message_id,excluded.message_id)"
+            )
 
     def touch(self, member: str, instance_id: str) -> None:
         with self.session() as connection:

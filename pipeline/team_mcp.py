@@ -53,7 +53,8 @@ TOOLS = [
         "description": (
             "Read messages after a cursor, optionally waiting up to 30 seconds. "
             "The same after_id replays them; advancing after_id acknowledges addressed "
-            "messages through that cursor. A cursor beyond the current log is rejected. "
+            "messages through that cursor. A cursor that would skip unread addressed "
+            "messages or is beyond the current log is rejected. "
             "Acknowledgement is not understanding."
         ),
         "inputSchema": {

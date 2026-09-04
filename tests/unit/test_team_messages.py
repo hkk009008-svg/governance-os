@@ -130,6 +130,38 @@ def test_same_member_instances_replay_one_log_and_share_cursor_acknowledgements(
     assert [message["id"] for message in replayed] == [sent["id"]]
 
 
+def test_cursor_from_own_send_cannot_skip_unread_inbound_message(
+    team_repo: Path,
+) -> None:
+    claude = team.Team(team_repo, "claude")
+    inbound = team.Team(team_repo, "codex").send(
+        "claude", "must be read", idempotency_key="unread-before-send"
+    )
+    outbound = claude.send(
+        "agy", "later outbound", idempotency_key="later-outbound"
+    )
+
+    with pytest.raises(team.TeamError, match="skip unread addressed messages"):
+        claude.wait(after_id=outbound["id"])
+
+    assert next(
+        item
+        for item in team.Team(team_repo, "codex").status()["sent"]
+        if item["id"] == inbound["id"]
+    )["acknowledged_by"] == []
+    received = claude.wait(after_id=0)
+    assert [item["id"] for item in received["messages"]] == [inbound["id"]]
+
+    # Once the inbound cursor has actually been returned, advancing across the
+    # later outbound ID is safe and acknowledges only the observed message.
+    assert claude.wait(after_id=outbound["id"])["messages"] == []
+    assert next(
+        item
+        for item in team.Team(team_repo, "codex").status()["sent"]
+        if item["id"] == inbound["id"]
+    )["acknowledged_by"] == ["claude"]
+
+
 def test_wait_long_polls_until_a_message_arrives(team_repo: Path) -> None:
     claude = team.Team(team_repo, "claude")
 
