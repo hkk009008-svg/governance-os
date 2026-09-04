@@ -242,3 +242,48 @@ def test_request_composer_resolves_refs_and_self_checks_shape(tmp_path) -> None:
     assert f"Reviewed head: {head}" in body
     assert "Author seat:" not in body
     assert git(root, "status", "--porcelain") == ""
+
+
+def test_envelope_sender_accepts_online_and_plain() -> None:
+    text_online = "**When:** 2026-09-04T12:00:00Z · **From:** codex (online)\n"
+    text_plain = "**When:** 2026-09-04T12:00:00Z · **From:** codex\n"
+    assert pair._envelope_sender(text_online) == "codex"
+    assert pair._envelope_sender(text_plain) == "codex"
+    with pytest.raises(pair.CompactPairError, match="missing or duplicate envelope sender"):
+        pair._envelope_sender("**When:** 2026-09-04T12:00:00Z\n")
+    with pytest.raises(pair.CompactPairError, match="missing or duplicate envelope sender"):
+        pair._envelope_sender(text_online + text_plain)
+
+
+def test_review_pair_validates_without_online_or_cursorless(tmp_path) -> None:
+    root = tmp_path / "repo"
+    base = init_repo(root)
+    head = _reviewed_change(root, base)
+    path_req, text_req = event(
+        "2026-09-04T12-00-00Z",
+        "codex",
+        "claude",
+        "verify-request",
+        request_body(base, head),
+    )
+    # Strip (online) and Cursor at send: cursorless
+    text_req = text_req.replace(" (online)", "").replace("\n\nCursor at send: cursorless\n", "\n")
+    req_commit = commit(root, {path_req: text_req}, "request without ceremony")
+
+    path_rep, text_rep = event(
+        "2026-09-04T12-05-00Z",
+        "claude",
+        "codex",
+        "verification-report",
+        report_body(path_req, req_commit),
+        subject="GO",
+    )
+    text_rep = text_rep.replace(" (online)", "").replace("\n\nCursor at send: cursorless\n", "\n")
+    commit(root, {path_rep: text_rep}, "report without ceremony")
+
+    request = pair.parse_verify_request(root, path_req, req_commit)
+    report = pair.parse_verification_report(root, path_rep)
+    assert request.author_member == "codex"
+    assert report.reviewer_member == "claude"
+    assert pair.validate_report(root, report) == []
+

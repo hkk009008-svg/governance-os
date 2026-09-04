@@ -198,7 +198,7 @@ def _section(lines: list[str], heading: str, *, optional: bool = False) -> list[
 
 
 def _envelope_sender(text: str) -> str:
-    matches = re.findall(r"\*\*From:\*\* ([a-z0-9]+) \(online\)", text)
+    matches = re.findall(r"\*\*From:\*\* ([a-z0-9]+)(?: \(online\))?(?:\r?\n|$)", text)
     if len(matches) != 1:
         raise CompactPairError("missing or duplicate envelope sender")
     return matches[0]
