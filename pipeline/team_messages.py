@@ -141,6 +141,31 @@ class Team:
                     ).fetchone()[0]
                     if after_id > high_water:
                         raise TeamError("after_id is beyond the current message log")
+                    frontier_row = connection.execute(
+                        "SELECT message_id FROM cursor_frontiers WHERE member=?",
+                        (self.member,),
+                    ).fetchone()
+                    frontier = frontier_row["message_id"] if frontier_row else 0
+                    if after_id > frontier:
+                        skipped = connection.execute(
+                            "SELECT id FROM messages m WHERE m.id>? AND m.id<=? "
+                            "AND m.sender!=? AND (m.recipient=? OR m.recipient='all') "
+                            "AND NOT EXISTS (SELECT 1 FROM deliveries d "
+                            "WHERE d.message_id=m.id AND d.member=?) "
+                            "ORDER BY m.id LIMIT 1",
+                            (frontier, after_id, self.member, self.member, self.member),
+                        ).fetchone()
+                        if skipped is not None:
+                            raise TeamError(
+                                "after_id would skip unread addressed messages; "
+                                "use next_cursor returned by team_wait"
+                            )
+                        connection.execute(
+                            "INSERT INTO cursor_frontiers(member,message_id) VALUES(?,?) "
+                            "ON CONFLICT(member) DO UPDATE SET message_id="
+                            "MAX(cursor_frontiers.message_id,excluded.message_id)",
+                            (self.member, after_id),
+                        )
                     if after_id:
                         connection.execute(
                             "INSERT OR IGNORE INTO deliveries(message_id,member,delivered_at) "
@@ -154,6 +179,12 @@ class Team:
                     (after_id, self.member, self.member, limit),
                 ))
                 if rows:
+                    connection.execute(
+                        "INSERT INTO cursor_frontiers(member,message_id) VALUES(?,?) "
+                        "ON CONFLICT(member) DO UPDATE SET message_id="
+                        "MAX(cursor_frontiers.message_id,excluded.message_id)",
+                        (self.member, rows[-1]["id"]),
+                    )
                     messages = [
                         self.store.message_view(connection, row["id"]) for row in rows
                     ]

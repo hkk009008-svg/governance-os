@@ -147,6 +147,35 @@ def test_wait_rejects_cursor_beyond_log_without_skipping_future_message(
         claude.close()
 
 
+def test_wait_rejects_sent_id_that_would_skip_unread_inbound_message(
+    team_repo: Path,
+) -> None:
+    inbound = team.Team(team_repo, "agy").send(
+        "codex", "must remain visible", idempotency_key="mcp-unread"
+    )
+    codex = McpProcess(team_repo, "codex")
+    try:
+        outbound = codex.tool(
+            "team_send",
+            {
+                "recipient": "claude",
+                "body": "later outbound",
+                "idempotency_key": "mcp-outbound",
+            },
+        )
+        rejected = codex.request(
+            "tools/call",
+            {"name": "team_wait", "arguments": {"after_id": outbound["id"]}},
+        )
+        assert rejected["isError"] is True
+        assert "skip unread addressed messages" in rejected["content"][0]["text"]
+        assert codex.tool("team_wait", {"after_id": 0})["messages"][0]["id"] == inbound[
+            "id"
+        ]
+    finally:
+        codex.close()
+
+
 def test_mcp_requires_initialize_then_initialized_notification(team_repo: Path) -> None:
     server = team.McpServer(team.Team(team_repo, "codex"))
     early = server.dispatch({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})

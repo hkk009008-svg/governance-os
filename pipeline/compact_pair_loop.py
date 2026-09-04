@@ -34,6 +34,8 @@ MAX_EVENT_BYTES = 262_144
 MATERIAL_BEHAVIOR_RISK = "material-behavior"
 HIGH_RISK_CONTROL = "high-risk-control"
 ABUSE_ASSESSMENT_BOUND_TO_REQUEST = "bound-to-request"
+ADMITTING_VERDICTS = frozenset({"GO", "NITS"})
+VALID_VERDICTS = ADMITTING_VERDICTS | {"FAIL"}
 
 
 class CompactPairError(ValueError):
@@ -421,7 +423,7 @@ def _parse_report_bytes(root: Path, path: str, raw: bytes) -> VerificationReport
     if _envelope_sender(text) != match.group("reviewer"):
         raise CompactPairError("report envelope sender does not match filename")
     verdict = str(_field(lines, "VERDICT"))
-    if verdict not in {"GO", "NITS", "FAIL"}:
+    if verdict not in VALID_VERDICTS:
         raise CompactPairError("VERDICT must be GO, NITS, or FAIL")
     request_value = str(_field(lines, "Verification request"))
     request_path, separator, request_commit = request_value.rpartition("@")
@@ -519,11 +521,11 @@ def _basic_report_violations(
             violations.append("high-risk-control report must bind Abuse Class Assessment")
     elif report.abuse_class_assessment_binding is not None:
         violations.append("Abuse Class Assessment binding is only valid for high-risk-control")
-    if report.verdict == "GO" and (
+    if report.verdict in ADMITTING_VERDICTS and (
         not any(line.startswith("$ ") and line[2:].strip() for line in report.evidence)
         or not any(line.startswith("→ ") and line[2:].strip() for line in report.evidence)
     ):
-        violations.append("GO requires command and output evidence")
+        violations.append("admitting verdict requires command and output evidence")
     return violations
 
 
