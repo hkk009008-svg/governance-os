@@ -122,19 +122,23 @@ def validate_event_envelope_bytes(
     sender = match.group("sender")
     recipient = match.group("recipient")
     expected_header = f"# {sender.capitalize()} → {recipient.capitalize()}: "
-    expected_envelope = f"**When:** {when} · **From:** {sender} (online)"
+    expected_envelope_online = f"**When:** {when} · **From:** {sender} (online)"
+    expected_envelope_plain = f"**When:** {when} · **From:** {sender}"
     if (
         len(lines) < 5
         or not lines[0].startswith(expected_header)
         or lines[1] != ""
-        or lines[2] != expected_envelope
+        or (lines[2] != expected_envelope_online and lines[2] != expected_envelope_plain)
         or lines[3] != ""
-        or lines[-1] != "Cursor at send: cursorless"
         or sum(line.startswith("# ") for line in lines) != 1
         or sum(line.startswith("**When:** ") for line in lines) != 1
-        or sum(line.startswith("Cursor at send: ") for line in lines) != 1
     ):
         raise MailboxWriterError("artifact envelope does not match filename")
+    cursor_lines = sum(line.startswith("Cursor at send: ") for line in lines)
+    if cursor_lines > 1:
+        raise MailboxWriterError("artifact envelope has duplicate cursor declaration")
+    if cursor_lines == 1 and lines[-1] != "Cursor at send: cursorless":
+        raise MailboxWriterError("artifact envelope cursor must be cursorless at end")
     return match
 
 

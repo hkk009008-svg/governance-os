@@ -141,3 +141,32 @@ def test_git_stage_failure_removes_the_created_artifact(tmp_path, monkeypatch) -
             body=request_body(base, head),
         )
     assert list((root / "coordination/mailbox/sent").glob("*verify-request.md")) == []
+
+
+def test_envelope_validation_accepts_plain_and_online(tmp_path) -> None:
+    root = tmp_path / "repo"
+    init_repo(root)
+    path, text = event(
+        "2026-09-02T10-00-00Z", "codex", "claude", "verify-request", "body"
+    )
+    # Baseline with (online) and Cursor at send: cursorless
+    mailbox_writer.validate_event_envelope_bytes(root, text.encode(), path)
+
+    # Without (online)
+    text_no_online = text.replace(" (online)", "")
+    mailbox_writer.validate_event_envelope_bytes(root, text_no_online.encode(), path)
+
+    # Without Cursor at send: cursorless
+    text_no_cursor = text_no_online.replace("\n\nCursor at send: cursorless\n", "\n")
+    mailbox_writer.validate_event_envelope_bytes(root, text_no_cursor.encode(), path)
+
+    # With duplicate cursor lines fails
+    text_dup_cursor = text + "Cursor at send: cursorless\n"
+    with pytest.raises(mailbox_writer.MailboxWriterError, match="duplicate cursor declaration"):
+        mailbox_writer.validate_event_envelope_bytes(root, text_dup_cursor.encode(), path)
+
+    # With non-cursorless cursor line fails
+    text_bad_cursor = text_no_cursor + "\nCursor at send: invalid-cursor\n"
+    with pytest.raises(mailbox_writer.MailboxWriterError, match="cursor must be cursorless"):
+        mailbox_writer.validate_event_envelope_bytes(root, text_bad_cursor.encode(), path)
+
