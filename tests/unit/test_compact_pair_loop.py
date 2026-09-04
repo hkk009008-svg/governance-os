@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import io
 
 import pytest
 
@@ -233,7 +234,13 @@ def test_remediation_cannot_skip_the_failed_head(tmp_path) -> None:
 def test_request_composer_resolves_refs_and_self_checks_shape(tmp_path) -> None:
     root = tmp_path / "repo"
     base = init_repo(root)
-    head = _reviewed_change(root, base)
+    evidence_path = "coordination/mailbox/sent/2026-09-04T12-00-00Z-codex-to-claude-verification-report.md"
+    evidence_commit = commit(
+        root,
+        {evidence_path: "Event type: verification-report\nVERDICT: GO\n"},
+        "review: evidence",
+    )
+    head = _reviewed_change(root, evidence_commit)
     body = pair.compose_request(
         root,
         author_member="codex",
@@ -244,11 +251,98 @@ def test_request_composer_resolves_refs_and_self_checks_shape(tmp_path) -> None:
         head_rev="HEAD",
         outcome="Review this range.",
         abuse_assessments=("Identity laundering",),
+        finding_refs=(f"{evidence_path}@{evidence_commit}",),
     )
     assert f"Reviewed base: {base}" in body
     assert f"Reviewed head: {head}" in body
     assert "Author seat:" not in body
+    assert "## Finding Refs" in body
+    assert f"- {evidence_path}@{evidence_commit}" in body
     assert git(root, "status", "--porcelain") == ""
+
+
+def test_compose_refuses_a_finding_ref_whose_object_does_not_exist(tmp_path) -> None:
+    root = tmp_path / "repo"
+    base = init_repo(root)
+    relative = (
+        "coordination/mailbox/sent/"
+        "2026-07-26T00-00-00Z-operator-to-director-verification-report.md"
+    )
+    real_commit = commit(
+        root,
+        {relative: "Event type: verification-report\nVERDICT: FAIL\n"},
+        "review: cited evidence",
+    )
+    arguments: dict[str, object] = {
+        "author_member": "codex",
+        "author_model": "gpt-5.6-sol",
+        "reviewer_member": "claude",
+        "risk_class": "high-risk-control",
+        "base_rev": base,
+        "head_rev": "HEAD",
+        "outcome": "Cites evidence.",
+        "abuse_assessments": ("Identity laundering",),
+    }
+
+    # The resolvable reference composes
+    body = pair.compose_request(
+        root, **arguments, finding_refs=(f"{relative}@{real_commit}",)
+    )
+    assert f"{relative}@{real_commit}" in body
+
+    absent_path = (
+        "coordination/mailbox/sent/"
+        "2026-01-01T00-00-00Z-operator-to-director-verification-report.md"
+    )
+    for reference in (f"{relative}@{'0' * 40}", f"{absent_path}@{real_commit}"):
+        with pytest.raises(
+            pair.CompactPairError, match="names an object that does not exist"
+        ):
+            pair.compose_request(root, **arguments, finding_refs=(reference,))
+
+
+def test_compose_still_accepts_a_digest_reference_it_cannot_verify(tmp_path) -> None:
+    root = tmp_path / "repo"
+    base = init_repo(root)
+    _reviewed_change(root, base)
+    body = pair.compose_request(
+        root,
+        author_member="codex",
+        author_model="gpt-5.6-sol",
+        reviewer_member="claude",
+        risk_class="high-risk-control",
+        base_rev=base,
+        head_rev="HEAD",
+        outcome="Cites a digest.",
+        abuse_assessments=("Identity laundering",),
+        finding_refs=("sha256:" + "b" * 64,),
+    )
+    assert "sha256:" + "b" * 64 in body
+
+
+def test_compose_refuses_duplicate_finding_refs(tmp_path) -> None:
+    root = tmp_path / "repo"
+    base = init_repo(root)
+    relative = "coordination/mailbox/sent/2026-07-26T00-00-00Z-test.md"
+    commit_sha = commit(
+        root,
+        {relative: "Event type: verification-report\nVERDICT: FAIL\n"},
+        "review: test",
+    )
+    ref = f"{relative}@{commit_sha}"
+    with pytest.raises(pair.CompactPairError, match="finding refs must be unique"):
+        pair.compose_request(
+            root,
+            author_member="codex",
+            author_model="gpt-5.6-sol",
+            reviewer_member="claude",
+            risk_class="high-risk-control",
+            base_rev=base,
+            head_rev="HEAD",
+            outcome="Duplicate refs.",
+            abuse_assessments=("Identity laundering",),
+            finding_refs=(ref, ref),
+        )
 
 
 def test_envelope_sender_accepts_online_and_plain() -> None:
@@ -293,4 +387,46 @@ def test_review_pair_validates_without_online_or_cursorless(tmp_path) -> None:
     assert request.author_member == "codex"
     assert report.reviewer_member == "claude"
     assert pair.validate_report(root, report) == []
+
+
+def test_compose_request_cli_with_finding_ref(tmp_path, monkeypatch, capsys) -> None:
+    root = tmp_path / "repo"
+    base = init_repo(root)
+    relative = "coordination/mailbox/sent/2026-07-26T00-00-00Z-test.md"
+    commit_sha = commit(root, {relative: "Event type: verification-report\nVERDICT: FAIL\n"}, "test")
+    head = _reviewed_change(root, commit_sha)
+    ref = f"{relative}@{commit_sha}"
+    monkeypatch.setattr("sys.stdin", io.StringIO("CLI outcome"))
+    exit_code = pair._main([
+        "compose-request",
+        "--repo-root", str(root),
+        "--author", "codex",
+        "--author-model", "gpt-5.6-sol",
+        "--reviewer", "claude",
+        "--risk-class", "high-risk-control",
+        "--base", base,
+        "--head", head,
+        "--abuse-class", "Identity laundering",
+        "--finding-ref", ref,
+    ])
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert f"- {ref}" in captured.out
+    assert "## Finding Refs" in captured.out
+
+    # Non-existent reference fails closed with exit code 1
+    monkeypatch.setattr("sys.stdin", io.StringIO("CLI outcome"))
+    exit_code_bad = pair._main([
+        "compose-request",
+        "--repo-root", str(root),
+        "--author", "codex",
+        "--author-model", "gpt-5.6-sol",
+        "--reviewer", "claude",
+        "--risk-class", "high-risk-control",
+        "--base", base,
+        "--head", head,
+        "--abuse-class", "Identity laundering",
+        "--finding-ref", f"{relative}@{'0' * 40}",
+    ])
+    assert exit_code_bad == 1
 
