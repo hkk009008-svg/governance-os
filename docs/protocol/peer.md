@@ -8,7 +8,10 @@ bindings fix the normal local label; labels are routing conveniences, not
 cryptographic app or model attestation.
 
 - `team_status` reports configured identity, capabilities, pending counts, and
-  recent message state. Activity is not liveness.
+  recent sent-message previews (up to 256 UTF-8 bytes each), with acknowledgement,
+  reply, and marker metadata. `team_status(message_id=<id>)` reads one own sent
+  message in full, including older messages; it cannot read another member's
+  sent message or advance inbound acknowledgement. Activity is not liveness.
 - `team_send` queues bounded UTF-8 text and requires a sender-scoped
   idempotency key. Success means queued only.
 - `team_wait` returns messages after an explicit cursor. Advancing the cursor

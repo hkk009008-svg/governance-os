@@ -5,6 +5,57 @@ import io
 
 import pytest
 
+
+def test_request_reads_are_reused_only_in_one_scope(tmp_path, monkeypatch):
+    from formal_review_support import init_repo, commit, add_request
+    root = tmp_path / "repo"
+    base = init_repo(root)
+    head = commit(root, {"notes.txt": "change\n"}, "candidate")
+    path, trigger = add_request(root, base, head)
+    real = pair.parse_verify_request_structure
+    calls = []
+    def read(*args):
+        calls.append(args)
+        return real(*args)
+    monkeypatch.setattr(pair, "parse_verify_request_structure", read)
+    with pair.request_read_scope():
+        first = pair.parse_verify_request(root, path, trigger)
+        assert pair.parse_verify_request(root, path, trigger) == first
+        assert len(calls) == 1
+        # Identical path and SHA in another repository must not reuse this result.
+        other = tmp_path / "other"
+        init_repo(other)
+        with pytest.raises(pair.CompactPairError):
+            pair.parse_verify_request(other, path, trigger)
+        assert len(calls) == 2
+    pair.parse_verify_request(root, path, trigger)
+    assert len(calls) == 3
+
+
+def test_request_scope_does_not_reuse_failures_or_survive_exceptions(tmp_path, monkeypatch):
+    from formal_review_support import init_repo, commit, add_request
+    root = tmp_path / "repo"
+    base = init_repo(root)
+    head = commit(root, {"notes.txt": "change\n"}, "candidate")
+    path, trigger = add_request(root, base, head)
+    with pytest.raises(RuntimeError, match="abort"):
+        with pair.request_read_scope():
+            pair.parse_verify_request(root, path, trigger)
+            raise RuntimeError("abort")
+    real = pair.parse_verify_request_structure
+    calls = []
+    def unavailable(*args):
+        calls.append(args)
+        raise pair.CompactPairError("unavailable")
+    monkeypatch.setattr(pair, "parse_verify_request_structure", unavailable)
+    with pair.request_read_scope():
+        for _ in range(2):
+            with pytest.raises(pair.CompactPairError, match="unavailable"):
+                pair.parse_verify_request(root, path, trigger)
+        assert len(calls) == 2
+        monkeypatch.setattr(pair, "parse_verify_request_structure", real)
+        assert pair.parse_verify_request(root, path, trigger).trigger_commit == trigger
+
 import compact_pair_loop as pair
 from formal_review_support import (
     add_report,
@@ -429,4 +480,3 @@ def test_compose_request_cli_with_finding_ref(tmp_path, monkeypatch, capsys) -> 
         "--finding-ref", f"{relative}@{'0' * 40}",
     ])
     assert exit_code_bad == 1
-

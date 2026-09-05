@@ -13,6 +13,12 @@ def test_current_roster_kinds_and_routes_are_exact() -> None:
     assert protocol_mailbox.formal_review_route_problem(
         "verification-report", "claude", "agy"
     ) is None
+    assert protocol_mailbox.formal_review_route_problem(
+        "verify-request", "claude", "codex"
+    ) is None
+    assert protocol_mailbox.formal_review_route_problem(
+        "verification-report", "codex", "claude"
+    ) is None
 
 
 def test_invalid_formal_routes_fail_closed() -> None:

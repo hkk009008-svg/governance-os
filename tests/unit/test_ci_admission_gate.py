@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 import ci_admission_gate as gate
 from formal_review_support import (
     add_report,
@@ -21,6 +23,129 @@ def test_range_without_authority_surface_is_admitted(tmp_path) -> None:
     assert outcome.admitted
 
 
+@pytest.mark.parametrize("protected", [
+    "tests/unit/test_ci_admission_gate.py", "tests/unit/test_team_security.py",
+    "tests/unit/test_governance_verify_all.py", "tests/unit/formal_review_support.py",
+])
+def test_trust_regression_edits_require_review_but_ordinary_tests_do_not(tmp_path, protected):
+    root = tmp_path / "repo"
+    base = init_repo(root)
+    ordinary = commit(root, {"tests/unit/test_status.py": "# ordinary test\n"}, "ordinary test")
+    assert gate.evaluate(root, base, ordinary).admitted
+    head = commit(root, {protected: "# changed trust test\n"}, "trust test")
+    outcome = gate.evaluate(root, base, head)
+    assert not outcome.admitted
+    assert outcome.uncovered == {head: (protected,)}
+
+
+def test_exact_test_surface_entries_exist(repo_root):
+    for path in gate.AUTHORITY_SURFACES:
+        if path.startswith("tests/"):
+            assert (repo_root / path).is_file(), path
+
+
+@pytest.mark.parametrize("mutation", ["delete", "rewrite", "restore", "rename", "symlink"])
+@pytest.mark.parametrize("introduced_in_range", [False, True])
+def test_formal_artifact_mutations_block_even_mailbox_only_ranges(
+    tmp_path, mutation, introduced_in_range
+) -> None:
+    root = tmp_path / "repo"
+    base = init_repo(root)
+    candidate = commit(root, {"notes.txt": "ordinary\n"}, "candidate")
+    request, request_commit = add_request(root, base, candidate)
+    report, report_commit = add_report(root, request, request_commit, verdict="FAIL")
+    integration_base = candidate if introduced_in_range else report_commit
+    original = (root / report).read_text()
+    if mutation == "rewrite":
+        head = commit(root, {report: original.replace("VERDICT: FAIL", "VERDICT: GO")}, "rewrite")
+    elif mutation == "rename":
+        git(root, "mv", report, "retired-report.md")
+        git(root, "commit", "-qm", "rename")
+        head = git(root, "rev-parse", "HEAD")
+    else:
+        git(root, "rm", "--", report)
+        if mutation == "symlink":
+            (root / report).symlink_to("../../../../notes.txt")
+            git(root, "add", "--", report)
+        git(root, "commit", "-qm", "retire")
+        head = git(root, "rev-parse", "HEAD")
+        if mutation == "restore":
+            head = commit(root, {report: original}, "restore identical bytes")
+    outcome = gate.evaluate(root, integration_base, head)
+    assert not outcome.admitted, gate.render(outcome)
+    assert "append-only" in gate.render(outcome)
+    assert report in gate.render(outcome)
+
+
+def test_plain_fail_then_sibling_go_does_not_clear_the_fail(tmp_path) -> None:
+    root = tmp_path / "repo"
+    base = init_repo(root)
+    candidate = commit(root, {"pipeline/control.py": "bad\n"}, "candidate")
+    request, request_commit = add_request(root, base, candidate)
+    fail, fail_commit = add_report(root, request, request_commit, verdict="FAIL")
+    git(root, "checkout", "-qb", "second-opinion", request_commit)
+    add_report(root, request, request_commit, stamp="2026-09-02T10-02-00Z")
+    git(root, "merge", "-q", "--no-ff", fail_commit, "-m", "combine opinions")
+    outcome = gate.evaluate(root, base, git(root, "rev-parse", "HEAD"))
+    assert not outcome.admitted
+    assert outcome.blocking_failures[0][0] == fail
+
+
+def test_merge_cannot_drop_a_report_from_only_its_second_parent(tmp_path) -> None:
+    root = tmp_path / "repo"
+    base = init_repo(root)
+    candidate = commit(root, {"notes.txt": "ordinary\n"}, "candidate")
+    request, request_commit = add_request(root, base, candidate)
+    report, report_commit = add_report(root, request, request_commit, verdict="FAIL")
+    git(root, "checkout", "-qb", "integration", request_commit)
+    commit(root, {"other.txt": "ordinary\n"}, "diverge")
+    git(root, "merge", "-q", "-s", "ours", "--no-ff", report_commit, "-m", "drop report")
+    head = git(root, "rev-parse", "HEAD")
+    outcome = gate.evaluate(root, candidate, head)
+    assert not outcome.admitted
+    assert any(f"{head}: D {report}" == item for item in outcome.artifact_mutations)
+
+
+def test_cli_rejects_request_rewrite_but_accepts_ordinary_work(tmp_path, capsys) -> None:
+    root = tmp_path / "repo"
+    base = init_repo(root)
+    candidate = commit(root, {"notes.txt": "ordinary\n"}, "candidate")
+    assert gate.main(["--root", str(root), "--base", base, "--head", candidate]) == 0
+    request, request_commit = add_request(root, base, candidate)
+    changed = (root / request).read_text().replace("Review the exact", "Do not review the exact")
+    head = commit(root, {request: changed}, "rewrite request")
+    assert gate.main(["--root", str(root), "--base", request_commit, "--head", head]) == 1
+    assert "append-only" in capsys.readouterr().out
+
+
+def test_remediation_supersedes_fail_without_erasing_history(tmp_path) -> None:
+    root = tmp_path / "repo"
+    base = init_repo(root)
+    first = commit(root, {"pipeline/control.py": "bad\n"}, "candidate")
+    request1, request1_commit = add_request(root, base, first)
+    fail, fail_commit = add_report(root, request1, request1_commit, verdict="FAIL")
+    fixed = commit(root, {"pipeline/control.py": "fixed\n"}, "fix")
+    request2, request2_commit = add_request(root, first, fixed, stamp="2026-09-02T10-02-00Z")
+    _, head = add_report(root, request2, request2_commit, stamp="2026-09-02T10-03-00Z", supersedes=f"{fail}@{fail_commit}")
+    outcome = gate.evaluate(root, first, head)
+    assert outcome.admitted, gate.render(outcome)
+    assert (root / fail).exists()
+
+
+def test_unrelated_retained_fail_is_not_a_global_veto(tmp_path) -> None:
+    root = tmp_path / "repo"
+    base = init_repo(root)
+    old = commit(root, {"pipeline/old.py": "bad\n"}, "old candidate")
+    request1, request1_commit = add_request(root, base, old)
+    fail, integration_base = add_report(root, request1, request1_commit, verdict="FAIL")
+    candidate = commit(root, {"pipeline/new.py": "good\n"}, "new candidate")
+    request2, request2_commit = add_request(root, integration_base, candidate, stamp="2026-09-02T10-02-00Z")
+    _, head = add_report(root, request2, request2_commit, stamp="2026-09-02T10-03-00Z")
+    outcome = gate.evaluate(root, integration_base, head)
+    assert outcome.admitted, gate.render(outcome)
+    assert (root / fail).exists()
+
+
 def test_authority_change_without_report_is_blocked(tmp_path) -> None:
     root = tmp_path / "repo"
     base = init_repo(root)
@@ -40,6 +165,24 @@ def test_high_risk_cross_family_go_admits_exact_range(tmp_path) -> None:
     assert outcome.admitted
     assert set(outcome.authority_commits) == {candidate}
     assert len(outcome.coverages) == 1
+
+
+def test_gate_reuses_immutable_request_reads_only_for_one_evaluation(tmp_path, monkeypatch):
+    root = tmp_path / "repo"
+    base = init_repo(root)
+    candidate = commit(root, {"pipeline/control.py": "good\n"}, "candidate")
+    request, trigger = add_request(root, base, candidate)
+    _, head = add_report(root, request, trigger)
+    real = gate.pair.parse_verify_request_structure
+    calls = []
+    def read(*args):
+        calls.append(args)
+        return real(*args)
+    monkeypatch.setattr(gate.pair, "parse_verify_request_structure", read)
+    assert gate.evaluate(root, base, head).admitted
+    assert len(calls) == 1
+    assert gate.evaluate(root, base, head).admitted
+    assert len(calls) == 2
 
 
 def test_evidence_free_nits_cannot_admit_authority_surface(tmp_path) -> None:
@@ -122,9 +265,8 @@ def test_report_added_then_deleted_in_range_is_not_evidence(tmp_path) -> None:
     new_head = git(root, "rev-parse", "HEAD")
     outcome = gate.evaluate(root, base, new_head)
     assert not outcome.admitted
-    assert outcome.skipped_reports == [
-        (report_path, "absent at integration base and candidate head")
-    ]
+    assert any(report_path in item for item in outcome.artifact_mutations)
+    assert "append-only" in gate.render(outcome)
 
 
 def test_render_summarizes_skipped_reports_unless_verbose() -> None:
@@ -187,7 +329,7 @@ def test_deleted_trusted_base_fail_remains_blocking_outside_its_range(tmp_path) 
 
     assert not outcome.admitted, gate.render(outcome)
     assert outcome.uncovered == {}
-    assert outcome.blocking_failures == [(failed_report, frozenset())]
+    assert any(failed_report in item for item in outcome.artifact_mutations)
 
 
 def test_clean_merge_of_review_chain_inherits_coverage(tmp_path) -> None:

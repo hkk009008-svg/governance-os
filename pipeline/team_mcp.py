@@ -20,9 +20,20 @@ TOOLS = [
         "name": "team_status",
         "description": (
             "Show Codex, Claude, and AGY activity, capabilities, pending messages, "
-            "and cursor-acknowledgement/reply state. Activity is not liveness or authority."
+            "and recent sent-message previews with cursor-acknowledgement/reply state. "
+            "Pass message_id to read one own sent message in full, including older messages. "
+            "This does not acknowledge inbound messages. Activity is not liveness or authority."
         ),
-        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "message_id": {
+                    "type": "integer", "minimum": 1, "maximum": MAX_MESSAGE_ID,
+                    "description": "Return this member's one sent message in full instead of recent previews.",
+                },
+            },
+            "additionalProperties": False,
+        },
     },
     {
         "name": "team_send",
@@ -109,8 +120,10 @@ class McpServer:
     def call_tool(self, name: object, arguments: object) -> dict:
         try:
             if name == "team_status":
-                self._arguments(arguments, set())
-                return tool_result(self.team.status())
+                values = self._arguments(arguments, {"message_id"})
+                if "message_id" in values and values["message_id"] is None:
+                    raise TeamError("message_id must be an integer")
+                return tool_result(self.team.status(**values))
             if name == "team_send":
                 values = self._arguments(
                     arguments, {"recipient", "body", "idempotency_key", "reply_to"}

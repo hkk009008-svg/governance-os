@@ -11,7 +11,9 @@ committed review at all. This gate closes exactly that gap and nothing more:
   1. Resolve the admitted range (default: merge-base with origin/main .. HEAD,
      falling back to local main when no remote-tracking main exists).
   2. List the commits in that range that touch an authority surface.
-  3. If there are none, admit silently — ordinary and material work keeps its
+  3. Reject changes to already-published formal artifacts, even in mailbox-only
+     ranges. Requests and reports are append-only; supersession retains originals.
+     Otherwise, if there are no authority changes, ordinary and material work keeps its
      existing proportionate verification; this gate adds no ceremony to it.
   4. Otherwise require every such commit to be covered by a committed,
      structurally valid verification-report at HEAD whose verdict is GO or
@@ -83,7 +85,23 @@ AUTHORITY_SURFACES: tuple[str, ...] = (
     "pipeline/",
     "setup.cfg",
     "sitecustomize.py",
-    "tests/unit/test_provider_surface_map.py",
+    # Load-bearing trust regressions and their shared fixture builders only;
+    # ordinary UI, status, and app-readiness tests remain outside this boundary.
+    "tests/unit/formal_review_support.py",
+    "tests/unit/team_test_support.py",
+    "tests/unit/test_check_coordination.py",
+    "tests/unit/test_ci_admission_gate.py",
+    "tests/unit/test_ci_supply_chain.py",
+    "tests/unit/test_codex_protocol_model.py",
+    "tests/unit/test_compact_pair_loop.py",
+    "tests/unit/test_git_runner.py",
+    "tests/unit/test_governance_verify_all.py",
+    "tests/unit/test_mailbox_writer.py",
+    "tests/unit/test_model_families_config.py",
+    "tests/unit/test_protocol_mailbox.py",
+    "tests/unit/test_team_mcp.py",
+    "tests/unit/test_team_messages.py",
+    "tests/unit/test_team_security.py",
     "tox.ini",
     "usercustomize.py",
 )
@@ -115,10 +133,11 @@ class Outcome:
     blocking_failures: list[tuple[str, frozenset[str]]] = field(default_factory=list)
     skipped_reports: list[tuple[str, str]] = field(default_factory=list)
     uncovered: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    artifact_mutations: list[str] = field(default_factory=list)
 
     @property
     def admitted(self) -> bool:
-        return not self.uncovered and not self.blocking_failures
+        return not self.uncovered and not self.blocking_failures and not self.artifact_mutations
 
 
 def _git(root: Path, *args: str, input_data: str | None = None) -> str:
@@ -196,7 +215,14 @@ def authority_commits(root: Path, base: str, head: str) -> dict[str, tuple[str, 
     }
 
 
-def _events_touched_in_range(root: Path, base: str, head: str) -> list[str]:
+def _artifact_changes(root: Path, base: str, head: str) -> tuple[list[str], list[str]]:
+    """Inspect every parent diff, not just the net tree, so restore cannot erase tampering.
+
+    This protects evidence in the supplied history, not discarded/unpublished branches.
+    Legacy paths are still discovered for the existing reader but do not acquire a new
+    publication grammar. Rename detection is disabled: moving an artifact deletes it.
+    """
+    marker = "__artifact_commit__:"
     revisions = _git(root, "rev-list", f"{base}..{head}")
     output = _git(
         root,
@@ -205,14 +231,28 @@ def _events_touched_in_range(root: Path, base: str, head: str) -> list[str]:
         "--root",
         "-m",
         "-r",
-        "--format=",
-        "--name-only",
+        "--no-renames",
+        f"--format={marker}%H",
+        "--name-status",
         "--diff-filter=AMRTD",
         "--",
         _MAILBOX_SENT.rstrip("/"),
         input_data=revisions,
     )
-    return sorted({line.strip() for line in output.splitlines() if line.strip()})
+    paths: set[str] = set()
+    mutations: set[str] = set()
+    commit = ""
+    for line in output.splitlines():
+        if line.startswith(marker):
+            commit = line[len(marker):]
+            continue
+        if not line:
+            continue
+        change, path = line.split("\t", 1)
+        paths.add(path)
+        if change != "A" and (pair.REQUEST_RE.fullmatch(path) or pair.REPORT_RE.fullmatch(path)):
+            mutations.add(f"{commit}: {change} {path}")
+    return sorted(paths), sorted(mutations)
 
 
 def _known_kinds_at(root: Path, head: str) -> frozenset[str]:
@@ -346,14 +386,17 @@ def _inherited_clean_merge_commits(
     return frozenset(inherited)
 
 
+@pair.request_read_scope()
 def evaluate(root: Path, base: str, head: str) -> Outcome:
     outcome = Outcome(base=base, head=head)
+    touched_events, outcome.artifact_mutations = _artifact_changes(root, base, head)
+    if outcome.artifact_mutations:
+        return outcome
     outcome.authority_commits = authority_commits(root, base, head)
     if not outcome.authority_commits:
         return outcome
 
     kinds = _known_kinds_at(root, head)
-    touched_events = _events_touched_in_range(root, base, head)
     parsed: dict[str, tuple[pair.VerificationReport, pair.VerifyRequest]] = {}
     carried_from_base: set[str] = set()
     for path in (item for item in touched_events if item.endswith(_REPORT_SUFFIX)):
@@ -469,6 +512,11 @@ def render(outcome: Outcome, *, verbose: bool = False) -> str:
         "ADMISSION GATE — risk-aware integration check "
         f"({outcome.base[:12]}..{outcome.head[:12]})"
     ]
+    if outcome.artifact_mutations:
+        lines.extend(f"  immutable artifact changed: {item}" for item in outcome.artifact_mutations)
+        lines.append("  RESULT: BLOCKED — published formal artifacts are append-only")
+        lines.append("  remedy: retain original artifacts and publish a valid Supersedes report")
+        return "\n".join(lines)
     if not outcome.authority_commits:
         lines.append(
             "  no authority-surface commits in range — admitted without review "

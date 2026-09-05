@@ -98,7 +98,8 @@ def test_render_foregrounds_apps_transport_and_formal_gate() -> None:
     rendered = status.render_orientation_snapshot(snapshot)
     assert "Apps: codex=ready claude=ready agy=ready" in rendered
     assert "pending[codex=1 claude=2 agy=0]" in rendered
-    assert "Formal gate: PASS" in rendered
+    assert "Mailbox health: PASS" in rendered
+    assert "Integration admission: not run" in rendered
 
 
 def test_pending_request_uses_current_reviewer_field(monkeypatch) -> None:
@@ -124,3 +125,22 @@ def test_json_cli_is_machine_readable(monkeypatch, capsys) -> None:
     monkeypatch.setattr(status, "collect_orientation_snapshot", lambda _root: snapshot)
     assert status.main(["--json"]) == 0
     assert json.loads(capsys.readouterr().out) == snapshot
+
+
+def test_all_pending_requests_are_visible_without_a_line_limit(monkeypatch) -> None:
+    requests = tuple(
+        check_coordination.CurrentVerifyRequest(
+            path=f"coordination/mailbox/sent/request-{i:02d}.md", commit="a" * 40,
+            reviewer_member="claude" if i % 2 else "codex", valid=True, problem=None,
+        ) for i in range(25)
+    )
+    monkeypatch.setattr(check_coordination, "inspect_verify_review_state", lambda _: check_coordination.VerifyReviewState(requests, ()))
+    review = status._collect_review_state(Path("."))
+    assert len(review["pending_requests"]) == 25
+    rendered = status.render_orientation_snapshot({
+        "generated_at": "now", "git": {"sha": "abc", "branch": "main", "dirty": 0},
+        "desktop": _desktop(), "team_transport": _transport(), "formal_review": review,
+    })
+    for request in requests:
+        assert request.path in rendered
+    assert "25 pending" in rendered

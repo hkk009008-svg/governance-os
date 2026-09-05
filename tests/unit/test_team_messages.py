@@ -51,6 +51,84 @@ def test_queue_acknowledgement_and_reply_are_distinct(team_repo: Path) -> None:
     assert codex_messages[0]["reply_to"] == queued["id"]
 
 
+def test_status_previews_preserve_metadata_and_full_own_message_readback(team_repo: Path) -> None:
+    codex = team.Team(team_repo, "codex")
+    claude = team.Team(team_repo, "claude")
+    body = "é🙂" * 1000
+    queued = codex.send("claude", body, idempotency_key="long-status")
+    claude.wait()
+    claude.wait(after_id=queued["id"])
+    reply = claude.send("codex", "reply", reply_to=queued["id"], idempotency_key="reply")
+
+    summary = codex.status()["sent"][0]
+    assert "body" not in summary
+    assert body.startswith(summary["body_preview"])
+    assert 0 < len(summary["body_preview"].encode("utf-8")) <= 256
+    assert summary["body_bytes"] == len(body.encode("utf-8"))
+    assert summary["body_truncated"] is True
+    assert summary["acknowledged_by"] == ["claude"]
+    assert summary["replies"] == [reply["id"]]
+    assert summary["identity_assurance"] == team.IDENTITY_ASSURANCE
+    assert summary["grants_authority"] is False
+    full = codex.status(message_id=queued["id"])
+    assert len(full["sent"]) == 1
+    assert full["sent"][0]["body"] == body
+    assert full["sent"][0]["acknowledged_by"] == ["claude"]
+    assert full["sent"][0]["replies"] == [reply["id"]]
+    assert full["sent"][0]["grants_authority"] is False
+    # Looking at a sent item must not mark an inbound reply read or acknowledged.
+    with pytest.raises(team.TeamError, match="skip unread addressed messages"):
+        codex.wait(after_id=reply["id"])
+    assert codex.wait()["messages"][0]["id"] == reply["id"]
+    assert claude.status(message_id=reply["id"])["sent"][0]["acknowledged_by"] == []
+
+
+def test_status_can_read_own_message_older_than_recent_window(team_repo: Path) -> None:
+    codex = team.Team(team_repo, "codex")
+    oldest = codex.send("all", "oldest", idempotency_key="oldest")
+    for index in range(50):
+        codex.send("claude", "short", idempotency_key=f"recent-{index}")
+    summaries = codex.status()["sent"]
+    assert len(summaries) == 50
+    assert oldest["id"] not in [item["id"] for item in summaries]
+    assert summaries[0]["body_preview"] == "short"
+    assert summaries[0]["body_truncated"] is False
+    assert codex.status(message_id=oldest["id"])["sent"][0]["body"] == "oldest"
+
+
+@pytest.mark.parametrize("recipient", ("codex", "agy", "all"))
+def test_status_refuses_other_senders_even_if_addressed_or_broadcast(
+    team_repo: Path, recipient: str,
+) -> None:
+    sent = team.Team(team_repo, "claude").send(recipient, "private", idempotency_key="other")
+    codex = team.Team(team_repo, "codex")
+    for message_id in (sent["id"], sent["id"] + 1):
+        with pytest.raises(team.TeamError, match="not a message sent by this member"):
+            codex.status(message_id=message_id)
+
+
+@pytest.mark.parametrize("message_id", (True, 0, -1, 1.0, "1", team.MAX_MESSAGE_ID + 1))
+def test_status_rejects_invalid_readback_ids(team_repo: Path, message_id: object) -> None:
+    with pytest.raises(team.TeamError, match="message_id"):
+        team.Team(team_repo, "codex").status(message_id=message_id)
+
+
+def test_constructing_team_does_not_record_activity_but_operations_do(team_repo: Path) -> None:
+    first = team.Team(team_repo, "codex")
+    with first.store.session() as connection:
+        assert connection.execute("SELECT count(*) FROM members").fetchone()[0] == 0
+    first.status()
+    second = team.Team(team_repo, "codex")
+    with first.store.session() as connection:
+        assert connection.execute("SELECT instance_id FROM members").fetchone()[0] == first.instance_id
+    second.wait()
+    with first.store.session() as connection:
+        assert connection.execute("SELECT instance_id FROM members").fetchone()[0] == second.instance_id
+    first.send("claude", "active", idempotency_key="active")
+    with first.store.session() as connection:
+        assert connection.execute("SELECT instance_id FROM members").fetchone()[0] == first.instance_id
+
+
 def test_idempotent_retry_is_exact_once_and_conflicts_fail(team_repo: Path) -> None:
     codex = team.Team(team_repo, "codex")
 

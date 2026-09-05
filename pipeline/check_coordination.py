@@ -2,9 +2,8 @@
 """Check current durable formal-review state.
 
 Team conversation lives in the local SQLite transport.  This module only
-checks the small set of formal request/report files that intentionally enter
-Git.  Older artifacts remain available in Git history without being replayed
-on every command.
+checks retained formal request/report files, including supersession and visible
+historical failures. Exact-range integration admission is a separate check.
 """
 
 from __future__ import annotations
@@ -53,6 +52,7 @@ class VerifyReviewState:
     pending: tuple[CurrentVerifyRequest, ...]
     failed: tuple[FailedVerifyRequest, ...]
     problem: str | None = None
+    historical_failed: tuple[FailedVerifyRequest, ...] = ()
 
 
 def _git(root: Path, *arguments: str) -> bytes:
@@ -115,17 +115,29 @@ def _immutable_bytes(root: Path, path: str, commit: str) -> bytes:
     return current
 
 
+@compact_pair_loop.request_read_scope()
 def inspect_verify_review_state(
     repo_root: Path | str,
-    coord_root: Path | str | None = None,
-    **_ignored: object,
 ) -> VerifyReviewState:
     """Return pending requests and active FAIL reports in the current tree."""
 
-    del coord_root
     root = Path(repo_root).resolve()
     requests, reports, unknown = _current_formal_paths(root)
     problems = [f"{path}: unsupported current mailbox entry" for path in unknown]
+    try:
+        committed_paths = _git(
+            root, "ls-tree", "-r", "--name-only", "HEAD", "--", "coordination/mailbox/sent"
+        ).decode("utf-8").splitlines()
+    except RuntimeError as exc:
+        problems.append(str(exc))
+    else:
+        current_paths = set(requests) | set(reports)
+        problems.extend(
+            f"{path}: published formal artifact missing from worktree"
+            for path in committed_paths
+            if (compact_pair_loop.REQUEST_RE.fullmatch(path) or compact_pair_loop.REPORT_RE.fullmatch(path))
+            and path not in current_paths
+        )
     parsed_requests: dict[
         tuple[str, str],
         tuple[CurrentVerifyRequest, compact_pair_loop.VerifyRequest | None],
@@ -191,6 +203,14 @@ def inspect_verify_review_state(
 
     pending: list[CurrentVerifyRequest] = []
     failed: list[FailedVerifyRequest] = []
+    historical_failed = [
+        FailedVerifyRequest(
+            report.request_path, report.request_commit, path, commit, report.reviewer_member
+        )
+        for path, commit, report in active_reports
+        if report.verdict == "FAIL"
+        and (report.request_path, report.request_commit) not in parsed_requests
+    ]
     for (path, commit), (current, _parsed) in parsed_requests.items():
         if not current.valid or not commit:
             pending.append(current)
@@ -200,8 +220,6 @@ def inspect_verify_review_state(
             for item in active_reports
             if item[2].request_path == path and item[2].request_commit == commit
         ]
-        if any(item[2].verdict in {"GO", "NITS"} for item in matches):
-            continue
         failures = [item for item in matches if item[2].verdict == "FAIL"]
         if failures:
             report_path, report_commit, _report = max(failures, key=lambda item: item[0])
@@ -214,6 +232,8 @@ def inspect_verify_review_state(
                     reviewer_member=current.reviewer_member,
                 )
             )
+        elif any(item[2].verdict in compact_pair_loop.ADMITTING_VERDICTS for item in matches):
+            continue
         elif any(
             report.request_path == path and report.request_commit == commit
             for _report_path, _report_commit, report in parsed_reports
@@ -228,6 +248,7 @@ def inspect_verify_review_state(
         pending=tuple(sorted(pending, key=lambda item: item.path)),
         failed=tuple(sorted(failed, key=lambda item: item.report_path)),
         problem="; ".join(problems) if problems else None,
+        historical_failed=tuple(sorted(historical_failed, key=lambda item: item.report_path)),
     )
 
 
@@ -235,7 +256,6 @@ def run(
     coord_root: Path | str,
     *,
     review_state: VerifyReviewState | None = None,
-    **_ignored: object,
 ) -> list[CoordIssue]:
     root = Path(coord_root).resolve().parent
     state = review_state or inspect_verify_review_state(root)
@@ -266,6 +286,16 @@ def run(
                 "failed_review",
                 "FATAL",
                 f"FAIL remains active for {item.request_path}@{item.request_commit}",
+            )
+        )
+    for item in state.historical_failed:
+        issues.append(
+            CoordIssue(
+                item.report_path.removeprefix("coordination/"),
+                "historical_fail",
+                "ADVISORY",
+                f"unsuperseded historical FAIL for {item.request_path}@{item.request_commit}; "
+                "request absent from current tree; evaluate integration with an explicit admission range",
             )
         )
     return issues

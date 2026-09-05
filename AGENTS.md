@@ -74,7 +74,9 @@ member identity or write formal artifacts.
 
 Publish only `verify-request` and `verification-report` through
 `bin/pipeline mail send`. The current artifacts live in
-`coordination/mailbox/sent/`; Git history is the archive. Never use that writer
+`coordination/mailbox/sent/`. Published artifacts are append-only: retain them
+and use a valid `Supersedes` report to retire a verdict. Git history is evidence,
+not permission to prune artifacts. Never use that writer
 for routine chat or role assignment.
 
 ## Effects

@@ -50,8 +50,8 @@ def _coordination_check() -> int:
     import check_coordination
     issues = check_coordination.run(ROOT / "coordination")
     fatal = [item for item in issues if item.severity == "FATAL"]
-    for item in fatal:
-        print(f"COORDINATION FATAL [{item.kind}] {item.path} — {item.message}")
+    for item in issues:
+        print(f"COORDINATION {item.severity} [{item.kind}] {item.path} — {item.message}")
     if fatal:
         return 1
     print("COORDINATION — OK")
@@ -75,7 +75,11 @@ def main(argv: list[str] | None = None) -> int:
     sys.stdout.flush()
     environment = os.environ.copy()
     environment.pop("GIT_INDEX_FILE", None)
+    # Full check has fixed options, not ad-hoc pytest options or injected plugins.
+    environment.pop("PYTEST_ADDOPTS", None)
+    environment.pop("PYTEST_PLUGINS", None)
     environment["PYTHONDONTWRITEBYTECODE"] = "1"
+    environment["PIPELINE_REQUIRE_EXECUTED_TEST"] = "1"
     result = subprocess.run(
         [sys.executable, "-m", "pytest", "-q"],
         cwd=ROOT,
