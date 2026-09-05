@@ -13,6 +13,28 @@ from formal_review_support import (
 )
 
 
+def test_one_inspection_reuses_requests_but_next_inspection_reads_worktree(tmp_path, monkeypatch):
+    root = tmp_path / "repo"
+    base = init_repo(root)
+    candidate = commit(root, {"notes.txt": "change\n"}, "candidate")
+    path, trigger = add_request(root, base, candidate)
+    add_report(root, path, trigger)
+    pair = coordination.compact_pair_loop
+    real = pair.parse_verify_request_structure
+    calls = []
+    def read(*args):
+        calls.append(args)
+        return real(*args)
+    monkeypatch.setattr(pair, "parse_verify_request_structure", read)
+    assert coordination.inspect_verify_review_state(root).problem is None
+    assert len(calls) == 1
+    (root / path).write_text("tampered\n")
+    state = coordination.inspect_verify_review_state(root)
+    assert not state.pending[0].valid
+    assert "differs from committed HEAD" in state.pending[0].problem
+    assert len(calls) == 2
+
+
 def test_empty_current_mailbox_is_clean(tmp_path) -> None:
     root = tmp_path / "repo"
     init_repo(root)

@@ -9,12 +9,31 @@ import re
 import stat
 import sys
 from collections.abc import Sequence
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 import codex_protocol_model
 import git_runner
 import protocol_mailbox
+
+
+_request_reads: ContextVar[dict | None] = ContextVar("request_reads", default=None)
+
+
+@contextmanager
+def request_read_scope():
+    """Reuse validated immutable requests only within one gate/status invocation.
+
+    No HEAD, worktree bytes, failed validation, or report verdict is cached.
+    The root is part of each key; a later invocation starts with no saved reads.
+    """
+    token = _request_reads.set({})
+    try:
+        yield
+    finally:
+        _request_reads.reset(token)
 
 
 SHA_RE = re.compile(r"[0-9a-f]{40}")
@@ -311,6 +330,10 @@ def parse_verify_request(
     root: Path, request_path: str | os.PathLike[str], trigger_commit: str
 ) -> VerifyRequest:
     root = root.resolve()
+    key = (root, str(request_path), trigger_commit)
+    reads = _request_reads.get()
+    if reads is not None and key in reads:
+        return reads[key]
     request = parse_verify_request_structure(root, request_path, trigger_commit)
     violations = validate_request_candidate(root, request)
     parents = _git(root, "show", "-s", "--format=%P", request.trigger_commit).decode().split()
@@ -329,6 +352,8 @@ def parse_verify_request(
         )
     if violations:
         raise CompactPairError("; ".join(violations))
+    if reads is not None:
+        reads[key] = request
     return request
 
 

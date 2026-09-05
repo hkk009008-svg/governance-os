@@ -116,6 +116,7 @@ def _immutable_bytes(root: Path, path: str, commit: str) -> bytes:
     return current
 
 
+@compact_pair_loop.request_read_scope()
 def inspect_verify_review_state(
     repo_root: Path | str,
     coord_root: Path | str | None = None,

@@ -26,6 +26,12 @@ suite. Use focused tests during implementation and one proportionate final pass.
 Investigate unexpected failures before changing behavior. A green check proves
 only the paths it executed.
 
+`check` requires an executed, non-skipped test and ignores inherited
+`PYTEST_ADDOPTS` and `PYTEST_PLUGINS` overrides. For custom selections/options,
+run pytest directly with the primary checkout's `.venv/bin/python`.
+This is a fixed full-suite command, not a sandbox for installed Python plugins.
+`status` lists every pending request; `status --json` includes their exact ranges.
+
 ## Formal review
 
 For `material-behavior` or `high-risk-control`, commit the candidate and create
@@ -40,6 +46,14 @@ The author sends `verify-request` to a non-author Codex or Claude member. The
 reviewer reproduces the evidence, inspects the actual diff, and sends one bound
 `verification-report`. High-risk review also requires different model families
 and a request-level abuse-class assessment.
+
+Publication is two separate commits: the request must be the only change
+directly after its reviewed head, and the report must be the only change
+directly after that request. The composer reads Outcome text from stdin and
+prints a body; it does not publish. Pass that body to `mail send`, then commit
+only the emitted path with an explicit pathspec. Use the actual running model,
+not an admitted label chosen to make validation pass. Revisions after review
+need their own exact-range coverage.
 
 Validate a draft before publication with:
 
@@ -63,6 +77,12 @@ commits and changes later reverted inside the integration range.
 Historical FAILs with previously pruned requests remain visible as advisories;
 they are not a blanket veto on unrelated work. Admission applies to the explicit
 base/head range. A same-request GO does not retire an unsuperseded FAIL.
+
+Local `check admission --base/--head` selects history, not the validator version:
+it executes code in the current checkout. The required PR workflow instead runs
+the gate from the trusted base against candidate Git objects, without executing
+candidate code. Land prerequisite gate changes before changes that rely on them.
+Direct-push CI is not a substitute for that PR admission check.
 
 ## Troubleshoot
 

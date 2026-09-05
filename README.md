@@ -11,6 +11,14 @@ and deterministic repository tooling.
 
 ## Start
 
+In a fresh primary checkout, install Python 3.11 or newer and the pinned test
+dependencies once (linked worktrees reuse this environment):
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install --require-hashes -r requirements-dev.txt
+```
+
 Open this repository in any of the three apps. Their checked-in bindings use
 the member labels `codex`, `claude`, and `agy`. In the app, call `team_status`,
 read addressed messages with `team_wait`, and use `team_send` when another

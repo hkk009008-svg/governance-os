@@ -146,6 +146,24 @@ def test_high_risk_cross_family_go_admits_exact_range(tmp_path) -> None:
     assert len(outcome.coverages) == 1
 
 
+def test_gate_reuses_immutable_request_reads_only_for_one_evaluation(tmp_path, monkeypatch):
+    root = tmp_path / "repo"
+    base = init_repo(root)
+    candidate = commit(root, {"pipeline/control.py": "good\n"}, "candidate")
+    request, trigger = add_request(root, base, candidate)
+    _, head = add_report(root, request, trigger)
+    real = gate.pair.parse_verify_request_structure
+    calls = []
+    def read(*args):
+        calls.append(args)
+        return real(*args)
+    monkeypatch.setattr(gate.pair, "parse_verify_request_structure", read)
+    assert gate.evaluate(root, base, head).admitted
+    assert len(calls) == 1
+    assert gate.evaluate(root, base, head).admitted
+    assert len(calls) == 2
+
+
 def test_evidence_free_nits_cannot_admit_authority_surface(tmp_path) -> None:
     root = tmp_path / "repo"
     base = init_repo(root)

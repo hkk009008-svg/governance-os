@@ -61,7 +61,7 @@ def _readiness_labels(rows: dict) -> str:
 
 
 def render_orientation_snapshot(snapshot: dict) -> str:
-    """Render the default desktop-team view in at most twenty lines."""
+    """Render compact readiness plus every pending formal request."""
 
     git = snapshot["git"]
     desktop = snapshot["desktop"]
@@ -109,16 +109,13 @@ def render_orientation_snapshot(snapshot: dict) -> str:
     review = snapshot.get("formal_review")
     if review is not None:
         current = review.get("current_request")
+        pending = review.get("pending_requests", [current] if current else [])
         failed = review.get("failed_review")
         blocker = review.get("blocker")
         if blocker:
             lines.append(f"Formal review: BLOCKED ({blocker})")
-        elif current is not None:
-            commit = current.get("commit") or "uncommitted"
-            lines.append(
-                f"Formal review: pending {current['path']}@{commit} "
-                f"reviewer={current['reviewer']}"
-            )
+        elif pending:
+            lines.append(f"Formal review: {len(pending)} pending")
         elif failed is not None:
             lines.append(
                 f"Formal review: failed {failed['report_path']}@"
@@ -126,6 +123,11 @@ def render_orientation_snapshot(snapshot: dict) -> str:
             )
         else:
             lines.append("Formal review: none")
+        for request in pending:
+            commit = request.get("commit") or "uncommitted"
+            lines.append(
+                f"  Pending: {request['path']}@{commit} reviewer={request['reviewer']}"
+            )
         gate = review["gate"]
         lines.append(
             f"Mailbox health: {gate['status']} ({gate['fatal']} fatal, "
@@ -135,7 +137,4 @@ def render_orientation_snapshot(snapshot: dict) -> str:
         if historical := review.get("historical_failed_reviews"):
             lines.append(f"Historical unresolved FAILs: {len(historical)} (details: status --json)")
         lines.append("Integration admission: not run (use check admission --base <sha> --head <sha>)")
-    rendered = "\n".join(lines) + "\n"
-    if len(rendered.splitlines()) > 20:
-        raise ValueError("orientation snapshot exceeded the 20-line contract")
-    return rendered
+    return "\n".join(lines) + "\n"

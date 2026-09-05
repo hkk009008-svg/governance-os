@@ -370,6 +370,7 @@ def _inherited_clean_merge_commits(
     return frozenset(inherited)
 
 
+@pair.request_read_scope()
 def evaluate(root: Path, base: str, head: str) -> Outcome:
     outcome = Outcome(base=base, head=head)
     touched_events, outcome.artifact_mutations = _artifact_changes(root, base, head)

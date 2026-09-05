@@ -105,17 +105,19 @@ def _collect_review_state(repo_root: Path) -> dict:
     else:
         next_action = "continue scoped team work; request formal review when risk requires it"
 
-    current_data = None
-    if current is not None:
-        current_data = {
-            "path": current.path,
-            "commit": current.commit,
-            "reviewer": current.reviewer_member,
-            "valid": current.valid,
-            "problem": current.problem,
-            "reviewed_base": current.reviewed_base,
-            "reviewed_head": current.reviewed_head,
+    pending_data = [
+        {
+            "path": item.path,
+            "commit": item.commit,
+            "reviewer": item.reviewer_member,
+            "valid": item.valid,
+            "problem": item.problem,
+            "reviewed_base": item.reviewed_base,
+            "reviewed_head": item.reviewed_head,
         }
+        for item in requests
+    ]
+    current_data = max(pending_data, key=lambda item: item["path"], default=None)
     failed_data = None
     if failed is not None:
         failed_data = {
@@ -129,6 +131,7 @@ def _collect_review_state(repo_root: Path) -> dict:
         "FAIL" if fatals or failed_reviews else ("WARN" if advisories else "PASS")
     )
     state = {
+        "pending_requests": pending_data,
         "current_request": current_data,
         "failed_review": failed_data,
         "historical_failed_reviews": [
