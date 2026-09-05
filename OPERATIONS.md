@@ -53,9 +53,16 @@ Admission for an explicit range is checked with:
 bin/pipeline check admission --base <full-sha> --head <full-sha>
 ```
 
-Do not write ordinary team conversation to the mailbox. Current formal
-artifacts stay in `coordination/mailbox/sent/`; older state is available through
-Git history.
+Do not write ordinary team conversation to the mailbox. Published formal
+artifacts are append-only: retain requests and reports in
+`coordination/mailbox/sent/` and retire verdicts through valid `Supersedes`
+reports, not deletion, renaming, or rewriting. This includes mailbox-only
+commits and changes later reverted inside the integration range.
+
+`status` and `check` describe mailbox health, not integration admission.
+Historical FAILs with previously pruned requests remain visible as advisories;
+they are not a blanket veto on unrelated work. Admission applies to the explicit
+base/head range. A same-request GO does not retire an unsuperseded FAIL.
 
 ## Troubleshoot
 

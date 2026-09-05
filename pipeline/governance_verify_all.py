@@ -50,8 +50,8 @@ def _coordination_check() -> int:
     import check_coordination
     issues = check_coordination.run(ROOT / "coordination")
     fatal = [item for item in issues if item.severity == "FATAL"]
-    for item in fatal:
-        print(f"COORDINATION FATAL [{item.kind}] {item.path} — {item.message}")
+    for item in issues:
+        print(f"COORDINATION {item.severity} [{item.kind}] {item.path} — {item.message}")
     if fatal:
         return 1
     print("COORDINATION — OK")

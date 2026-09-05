@@ -50,8 +50,11 @@ formal boundary:
 The author publishes one exact-range `verify-request`; the reviewer publishes
 one bound `verification-report` with GO, NITS, or FAIL. Both use the fixed
 writer behind `bin/pipeline mail send` and live in
-`coordination/mailbox/sent/`. The directory holds current formal state only;
-Git history is the archive.
+`coordination/mailbox/sent/`. Published artifacts are append-only. Retain the
+original request/report chain when superseding a verdict; do not prune it.
+Admission checks artifact changes throughout the supplied range, including
+mailbox-only commits and intermediate changes hidden by a later restoration.
+They cannot recover evidence discarded from that supplied Git history.
 
 `pipeline/compact_pair_loop.py` validates the two artifacts, range ancestry,
 publisher/model-family bindings, evidence, and FAIL supersession.

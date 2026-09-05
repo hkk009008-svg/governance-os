@@ -128,10 +128,13 @@ def render_orientation_snapshot(snapshot: dict) -> str:
             lines.append("Formal review: none")
         gate = review["gate"]
         lines.append(
-            f"Formal gate: {gate['status']} ({gate['fatal']} fatal, "
+            f"Mailbox health: {gate['status']} ({gate['fatal']} fatal, "
             f"{gate['advisory']} advisory, "
             f"{gate.get('failed_review', 0)} failed)"
         )
+        if historical := review.get("historical_failed_reviews"):
+            lines.append(f"Historical unresolved FAILs: {len(historical)} (details: status --json)")
+        lines.append("Integration admission: not run (use check admission --base <sha> --head <sha>)")
     rendered = "\n".join(lines) + "\n"
     if len(rendered.splitlines()) > 20:
         raise ValueError("orientation snapshot exceeded the 20-line contract")

@@ -131,6 +131,17 @@ def _collect_review_state(repo_root: Path) -> dict:
     state = {
         "current_request": current_data,
         "failed_review": failed_data,
+        "historical_failed_reviews": [
+            {
+                "request_path": item.request_path,
+                "request_commit": item.request_commit,
+                "report_path": item.report_path,
+                "report_commit": item.report_commit,
+                "reviewer": item.reviewer_member,
+            }
+            for item in review_state.historical_failed
+        ],
+        "admission": "not-run; use check admission with an explicit base/head range",
         "gate": {
             "status": gate_status,
             "fatal": len(fatals),

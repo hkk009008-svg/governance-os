@@ -98,7 +98,8 @@ def test_render_foregrounds_apps_transport_and_formal_gate() -> None:
     rendered = status.render_orientation_snapshot(snapshot)
     assert "Apps: codex=ready claude=ready agy=ready" in rendered
     assert "pending[codex=1 claude=2 agy=0]" in rendered
-    assert "Formal gate: PASS" in rendered
+    assert "Mailbox health: PASS" in rendered
+    assert "Integration admission: not run" in rendered
 
 
 def test_pending_request_uses_current_reviewer_field(monkeypatch) -> None:
