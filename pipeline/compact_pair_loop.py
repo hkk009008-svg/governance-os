@@ -440,7 +440,6 @@ def compose_request(
     abuse_assessments: Sequence[str] = (),
     finding_refs: Sequence[str] = (),
     reviewed_repository: Path | None = None,
-    **_ignored: object,
 ) -> str:
     root = root.resolve()
     problem = protocol_mailbox.formal_review_route_problem(
@@ -567,7 +566,6 @@ def parse_verification_report_committed_bytes(
     root: Path,
     report_path: str | os.PathLike[str],
     raw: bytes,
-    **_ignored: object,
 ) -> VerificationReport:
     root = root.resolve()
     return _parse_report_bytes(root, _repo_path(root, report_path), raw)

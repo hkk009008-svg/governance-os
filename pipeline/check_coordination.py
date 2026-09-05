@@ -2,9 +2,8 @@
 """Check current durable formal-review state.
 
 Team conversation lives in the local SQLite transport.  This module only
-checks the small set of formal request/report files that intentionally enter
-Git.  Older artifacts remain available in Git history without being replayed
-on every command.
+checks retained formal request/report files, including supersession and visible
+historical failures. Exact-range integration admission is a separate check.
 """
 
 from __future__ import annotations
@@ -119,12 +118,9 @@ def _immutable_bytes(root: Path, path: str, commit: str) -> bytes:
 @compact_pair_loop.request_read_scope()
 def inspect_verify_review_state(
     repo_root: Path | str,
-    coord_root: Path | str | None = None,
-    **_ignored: object,
 ) -> VerifyReviewState:
     """Return pending requests and active FAIL reports in the current tree."""
 
-    del coord_root
     root = Path(repo_root).resolve()
     requests, reports, unknown = _current_formal_paths(root)
     problems = [f"{path}: unsupported current mailbox entry" for path in unknown]
@@ -260,7 +256,6 @@ def run(
     coord_root: Path | str,
     *,
     review_state: VerifyReviewState | None = None,
-    **_ignored: object,
 ) -> list[CoordIssue]:
     root = Path(coord_root).resolve().parent
     state = review_state or inspect_verify_review_state(root)

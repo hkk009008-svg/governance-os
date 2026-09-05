@@ -23,6 +23,27 @@ def test_range_without_authority_surface_is_admitted(tmp_path) -> None:
     assert outcome.admitted
 
 
+@pytest.mark.parametrize("protected", [
+    "tests/unit/test_ci_admission_gate.py", "tests/unit/test_team_security.py",
+    "tests/unit/test_governance_verify_all.py", "tests/unit/formal_review_support.py",
+])
+def test_trust_regression_edits_require_review_but_ordinary_tests_do_not(tmp_path, protected):
+    root = tmp_path / "repo"
+    base = init_repo(root)
+    ordinary = commit(root, {"tests/unit/test_status.py": "# ordinary test\n"}, "ordinary test")
+    assert gate.evaluate(root, base, ordinary).admitted
+    head = commit(root, {protected: "# changed trust test\n"}, "trust test")
+    outcome = gate.evaluate(root, base, head)
+    assert not outcome.admitted
+    assert outcome.uncovered == {head: (protected,)}
+
+
+def test_exact_test_surface_entries_exist(repo_root):
+    for path in gate.AUTHORITY_SURFACES:
+        if path.startswith("tests/"):
+            assert (repo_root / path).is_file(), path
+
+
 @pytest.mark.parametrize("mutation", ["delete", "rewrite", "restore", "rename", "symlink"])
 @pytest.mark.parametrize("introduced_in_range", [False, True])
 def test_formal_artifact_mutations_block_even_mailbox_only_ranges(
