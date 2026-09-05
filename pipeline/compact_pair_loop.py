@@ -341,6 +341,67 @@ def parse_verify_request_candidate(
     return _parse_request_bytes(root, final, _read_regular(root, candidate), "")
 
 
+def _object_exists(root: Path, commit: str, path: str) -> bool:
+    """Whether `<commit>:<path>` names an object in *root*'s object store.
+
+    `cat-file -e` answers by exit code and prints nothing, so no output is
+    parsed. It reads the object store rather than any branch, which is what a
+    finding reference needs: evidence committed on a branch invisible from the
+    default one is still citable, and a fabricated commit is in no store at all.
+    """
+    result = git_runner.run_git(
+        root, ("cat-file", "-e", f"{commit}:{path}"), mode="authority"
+    )
+    return result.returncode == 0
+
+
+def _require_path_references_resolve(
+    root: Path, references: Sequence[str], *, reviewed_root: Path | None = None
+) -> None:
+    """Refuse to compose a `path@commit` reference whose object does not exist.
+
+    Canonical shape was the only check, and shape is satisfied by any forty hex
+    characters. Three references were composed in one session that were
+    well-formed and wrong: two named commits that do not exist, invented while
+    transcribing, and the shape check accepted both. A reference is the one part
+    of a request a reader cannot verify by reading the request, so a fabricated
+    one is worse than a missing one — it reads as provenance and resolves to
+    nothing.
+
+    Deliberately only at compose time, not in the shared parser. Of 581
+    `path@commit` references across committed events, 23 no longer resolve
+    because the history they named was rewritten. Those are frozen artifacts and
+    re-judging them would turn the historical-report gate in `ci_smoke` red for
+    events nobody can now amend. New references are the ones an author can still
+    get right, and this is where they are written.
+
+    Either root satisfies it. A cross-repository review may cite evidence from
+    the reviewed repository or from this one, and a fabricated commit resolves in
+    neither, so accepting both keeps the check free of false refusals without
+    weakening it.
+
+    A `sha256:` digest is not checked, because nothing here holds the bytes it
+    digests. That is a real gap and the reason it stays a gap is worth stating:
+    the third bad reference of that session was a digest naming the wrong
+    document, and this guard would not have caught it.
+    """
+    candidates = (root, reviewed_root) if reviewed_root else (root,)
+    for reference in references:
+        if "@" not in reference or reference.startswith("sha256:"):
+            continue
+        path, _, commit = reference.rpartition("@")
+        if not path or not commit:
+            continue
+        if any(_object_exists(candidate, commit, path) for candidate in dict.fromkeys(candidates)):
+            continue
+        raise CompactPairError(
+            f"finding ref names an object that does not exist: {reference}. "
+            "A reference is the part of a request a reader cannot check by "
+            "reading it, so a well-formed one that resolves to nothing reads as "
+            "provenance and is not. Verify the commit and path before citing them."
+        )
+
+
 def compose_request(
     root: Path,
     *,
@@ -352,6 +413,8 @@ def compose_request(
     head_rev: str,
     outcome: str,
     abuse_assessments: Sequence[str] = (),
+    finding_refs: Sequence[str] = (),
+    reviewed_repository: Path | None = None,
     **_ignored: object,
 ) -> str:
     root = root.resolve()
@@ -380,6 +443,10 @@ def compose_request(
         raise CompactPairError("Abuse Class Assessment is only valid for high-risk-control")
     if len(assessments) != len(set(assessments)):
         raise CompactPairError("Abuse Class Assessment entries must be unique")
+    references = tuple(item.strip() for item in finding_refs if item.strip())
+    if len(references) != len(set(references)):
+        raise CompactPairError("finding refs must be unique")
+    _require_path_references_resolve(root, references, reviewed_root=reviewed_repository)
     lines = [
         "Event type: verify-request",
         f"Reviewed base: {base}",
@@ -394,6 +461,9 @@ def compose_request(
     if assessments:
         lines += ["", "## Abuse Class Assessment", ""]
         lines += [f"- {item}" for item in assessments]
+    if references:
+        lines += ["", "## Finding Refs", ""]
+        lines += [f"- {item}" for item in references]
     return "\n".join(lines)
 
 
@@ -666,6 +736,7 @@ def _main(argv: list[str] | None = None) -> int:
     compose.add_argument("--base", required=True)
     compose.add_argument("--head", default="HEAD")
     compose.add_argument("--abuse-class", action="append", default=[])
+    compose.add_argument("--finding-ref", action="append", default=[])
     arguments = parser.parse_args(argv)
     try:
         if arguments.command == "compose-request":
@@ -679,6 +750,7 @@ def _main(argv: list[str] | None = None) -> int:
                 head_rev=arguments.head,
                 outcome=sys.stdin.read(),
                 abuse_assessments=arguments.abuse_class,
+                finding_refs=arguments.finding_ref,
             )
             print(body)
             return 0
