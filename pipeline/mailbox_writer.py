@@ -20,9 +20,6 @@ import protocol_mailbox
 
 ROOT = Path(__file__).resolve().parent.parent
 FORMAL_REVIEW_KINDS = frozenset({"verify-request", "verification-report"})
-NEW_WRITE_KINDS = FORMAL_REVIEW_KINDS
-NEW_WRITE_SENDERS = frozenset(protocol_mailbox.APP_MEMBERS)
-NEW_WRITE_RECIPIENTS = NEW_WRITE_SENDERS | {"all"}
 _LOCK_NAME = "pipeline-mailbox-writer.lock"
 _GIT_ENV = {
     "PATH": "/usr/bin:/bin",

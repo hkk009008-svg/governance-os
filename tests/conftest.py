@@ -50,7 +50,7 @@ def pytest_runtest_logreport(report) -> None:
 
 
 def pytest_sessionfinish(session, exitstatus) -> None:
-    """CI must not accept a collected suite in which every test was skipped."""
+    """CI and local full checks must execute a test, not merely collect skips."""
 
     if (
         os.environ.get("PIPELINE_REQUIRE_EXECUTED_TEST") == "1"

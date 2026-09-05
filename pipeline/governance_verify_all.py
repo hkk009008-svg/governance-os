@@ -75,7 +75,11 @@ def main(argv: list[str] | None = None) -> int:
     sys.stdout.flush()
     environment = os.environ.copy()
     environment.pop("GIT_INDEX_FILE", None)
+    # Full check has fixed options, not ad-hoc pytest options or injected plugins.
+    environment.pop("PYTEST_ADDOPTS", None)
+    environment.pop("PYTEST_PLUGINS", None)
     environment["PYTHONDONTWRITEBYTECODE"] = "1"
+    environment["PIPELINE_REQUIRE_EXECUTED_TEST"] = "1"
     result = subprocess.run(
         [sys.executable, "-m", "pytest", "-q"],
         cwd=ROOT,

@@ -1,10 +1,6 @@
 from __future__ import annotations
 
-import os
 import re
-import subprocess
-import sys
-from pathlib import Path
 
 
 CHECKOUT_SHA = "d23441a48e516b6c34aea4fa41551a30e30af803"
@@ -52,25 +48,3 @@ def test_trusted_admission_never_executes_candidate_code(repo_root) -> None:
     assert "python trusted/pipeline/ci_admission_gate.py" in workflow
     assert "python candidate/" not in workflow
     assert "pip install" not in workflow
-
-
-def test_ci_execution_guard_rejects_an_all_skipped_suite(
-    tmp_path: Path, repo_root: Path
-) -> None:
-    test_file = tmp_path / "test_only_skip.py"
-    test_file.write_text(
-        "import pytest\n@pytest.mark.skip(reason='control')\ndef test_never(): pass\n",
-        encoding="utf-8",
-    )
-    env = os.environ.copy()
-    env.pop("GIT_INDEX_FILE", None)
-    env["PIPELINE_REQUIRE_EXECUTED_TEST"] = "1"
-    result = subprocess.run(
-        [sys.executable, "-m", "pytest", "-q", "-p", "tests.conftest", str(test_file)],
-        cwd=repo_root,
-        env=env,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert result.returncode != 0

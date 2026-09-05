@@ -78,28 +78,34 @@ def test_envelope_validation_binds_filename_sender(tmp_path) -> None:
         )
 
 
-def test_report_publication_reproduces_request_binding(tmp_path, monkeypatch) -> None:
+@pytest.mark.parametrize("author,author_model,reviewer,reviewer_model", (
+    ("codex", "gpt-5.6-sol", "claude", "claude-sonnet-5"),
+    ("claude", "claude-sonnet-5", "codex", "gpt-5.6-sol"),
+))
+def test_report_publication_reproduces_request_binding(
+    tmp_path, monkeypatch, author, author_model, reviewer, reviewer_model,
+) -> None:
     root = tmp_path / "repo"
     base = init_repo(root)
     head = commit(root, {"pipeline/control.py": "enabled = True\n"}, "candidate")
     request_path, request_text = event(
         "2026-09-02T09-59-00Z",
-        "codex",
-        "claude",
+        author,
+        reviewer,
         "verify-request",
-        request_body(base, head),
+        request_body(base, head, author_model=author_model),
     )
     request_commit = commit(root, {request_path: request_text}, "request")
     monkeypatch.setattr(mailbox_writer, "datetime", _FixedDateTime)
     report_path = mailbox_writer.publish(
         root,
-        sender="claude",
-        recipient="codex",
+        sender=reviewer,
+        recipient=author,
         kind="verification-report",
         subject="GO",
-        body=report_body(request_path, request_commit),
+        body=report_body(request_path, request_commit, reviewer_model=reviewer_model),
     )
-    assert report_path.endswith("claude-to-codex-verification-report.md")
+    assert report_path.endswith(f"{reviewer}-to-{author}-verification-report.md")
 
 
 def test_invalid_report_leaves_no_artifact(tmp_path, monkeypatch) -> None:
@@ -169,4 +175,3 @@ def test_envelope_validation_accepts_plain_and_online(tmp_path) -> None:
     text_bad_cursor = text_no_cursor + "\nCursor at send: invalid-cursor\n"
     with pytest.raises(mailbox_writer.MailboxWriterError, match="cursor must be cursorless"):
         mailbox_writer.validate_event_envelope_bytes(root, text_bad_cursor.encode(), path)
-
