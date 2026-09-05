@@ -15,6 +15,7 @@ from team_store import (
 
 
 _KEY_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}\Z")
+_STATUS_PREVIEW_BYTES = 256
 
 
 class Team:
@@ -28,7 +29,6 @@ class Team:
         self.repo_root, self.common_dir = self.store.repo_root, self.store.common_dir
         self.store_path = self.store.path
         self.instance_id = uuid.uuid4().hex
-        self._touch()
 
     def _touch(self) -> None:
         self.store.touch(self.member, self.instance_id)
@@ -205,10 +205,24 @@ class Team:
             "grants_authority": False,
         }
 
-    def status(self) -> dict:
-        """Return activity and pending counts, never a liveness claim."""
+    def status(self, *, message_id: int | None = None) -> dict:
+        """Return recent sent previews, or one own sent message in full.
+
+        Read-back does not advance an inbound cursor or acknowledge messages.
+        Activity and pending counts are never a liveness or authority claim.
+        """
+        if message_id is not None and (
+            isinstance(message_id, bool) or not isinstance(message_id, int)
+            or not 1 <= message_id <= MAX_MESSAGE_ID
+        ):
+            raise TeamError(f"message_id must be an integer from 1 to {MAX_MESSAGE_ID}")
         self._touch()
         with self.store.session() as connection:
+            if message_id is not None and connection.execute(
+                "SELECT id FROM messages WHERE id=? AND sender=?",
+                (message_id, self.member),
+            ).fetchone() is None:
+                raise TeamError("message_id is not a message sent by this member")
             observed = {row["name"]: row for row in connection.execute(
                 "SELECT name,capabilities,last_seen FROM members"
             )}
@@ -226,11 +240,24 @@ class Team:
                     "capabilities": json.loads(row["capabilities"]) if row else list(CAPABILITIES[name]),
                     "pending": pending,
                 })
-            ids = [row["id"] for row in connection.execute(
-                "SELECT id FROM messages WHERE sender=? ORDER BY id DESC LIMIT 50",
-                (self.member,),
-            )][::-1]
-            sent = [self.store.message_view(connection, message_id) for message_id in ids]
+            if message_id is not None:
+                ids = [message_id]
+            else:
+                ids = [row["id"] for row in connection.execute(
+                    "SELECT id FROM messages WHERE sender=? ORDER BY id DESC LIMIT 50",
+                    (self.member,),
+                )][::-1]
+            sent = [self.store.message_view(connection, item_id) for item_id in ids]
+            if message_id is None:
+                for item in sent:
+                    body = item.pop("body").encode("utf-8")
+                    item.update(
+                        body_preview=body[:_STATUS_PREVIEW_BYTES].decode(
+                            "utf-8", errors="ignore"
+                        ),
+                        body_bytes=len(body),
+                        body_truncated=len(body) > _STATUS_PREVIEW_BYTES,
+                    )
         return {
             "member": self.member, "members": members, "sent": sent,
             "store": str(self.store_path),

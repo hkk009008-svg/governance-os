@@ -82,6 +82,44 @@ def test_three_stdio_mcp_apps_complete_round_trip(team_repo: Path) -> None:
             app.close()
 
 
+def test_stdio_status_compaction_and_own_message_readback(team_repo: Path) -> None:
+    codex = McpProcess(team_repo, "codex")
+    try:
+        schema = codex.request("tools/list")["tools"][0]["inputSchema"]
+        assert set(schema["properties"]) == {"message_id"}
+        assert {key: schema["properties"]["message_id"][key] for key in (
+            "type", "minimum", "maximum"
+        )} == {
+            "type": "integer", "minimum": 1, "maximum": team.MAX_MESSAGE_ID,
+        }
+        body = "🙂large message " * 800
+        queued = codex.tool("team_send", {
+            "recipient": "claude", "body": body, "idempotency_key": "status-full",
+        })
+        wire = codex.request("tools/call", {"name": "team_status", "arguments": {}})
+        assert body not in json.dumps(wire, ensure_ascii=False)
+        assert len(json.dumps(wire, ensure_ascii=False).encode()) < 6000
+        summary = wire["structuredContent"]["sent"][0]
+        assert "body" not in summary
+        assert summary["body_bytes"] == len(body.encode())
+        full = codex.tool("team_status", {"message_id": queued["id"]})
+        assert full["sent"][0]["body"] == body
+        assert full["sent"][0]["grants_authority"] is False
+        assert full["identity_assurance"] == team.IDENTITY_ASSURANCE
+        inbound = team.Team(team_repo, "claude").send("codex", "unread", idempotency_key="inbound")
+        for arguments in (
+            {"message_id": inbound["id"]}, {"message_id": True},
+            {"message_id": None},
+            {"message_id": queued["id"], "member": "claude"},
+        ):
+            rejected = codex.request("tools/call", {"name": "team_status", "arguments": arguments})
+            assert rejected["isError"] is True
+            assert "unread" not in rejected["content"][0]["text"]
+        assert codex.tool("team_wait")["messages"][0]["id"] == inbound["id"]
+    finally:
+        codex.close()
+
+
 def test_mcp_identity_is_not_a_tool_argument(team_repo: Path) -> None:
     codex = McpProcess(team_repo, "codex")
     try:
