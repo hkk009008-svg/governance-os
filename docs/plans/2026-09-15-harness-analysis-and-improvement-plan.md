@@ -287,7 +287,7 @@ different model family than the author.
 | Phase | Content | Files | Risk class | Evidence to produce |
 |---|---|---|---|---|
 | 0 | This plan | `docs/plans/` | ordinary-local | none required |
-| 1 | R1, R2, I1, I3 | `pipeline/team_messages.py`, `team_store.py`, `team_mcp.py`, `harness_preflight.py:301`, `tests/unit/test_team_messages.py`, `test_team_mcp.py` | high-risk-control (transport) | byte counts before/after on the 120-message probe; cursor experiment re-run showing one call to unread; reversion of the skip guard still fails its test; class-5 probe (no cross-member body in status) unchanged |
+| 1 | R1, R2, I1, I3 (implemented on this branch; awaiting its exact-range review) | `pipeline/team_messages.py`, `team_store.py`, `team_mcp.py`, `team.py`, `tests/unit/test_team_messages.py`, `test_team_mcp.py`, orientation lines in `AGENTS.md`, `OPERATIONS.md`, `docs/protocol/peer.md` | high-risk-control (transport) | byte counts before/after on the 120-message probe; cursor experiment re-run showing one call to unread; reversion of the skip guard still fails its test; class-5 probe (no cross-member body in status) unchanged |
 | 2 | R3, I2, I10 | `pipeline/status*.py`, `check_coordination.py`, `governance_verify_all.py`, new `pipeline/orient.py`, `cli.py`, `tests/unit/test_status.py` | high-risk-control until I9 lands (then material-behavior) | subprocess count ≤ 30 per `status`; `orient` output ≤ 40 lines; cache invalidates on HEAD change (reversion test); advisories present in `--json`/`--verbose` |
 | 3 | R4, R5, R8, I6, I7 | `AGENTS.md`, `README.md`, `ARCHITECTURE.md`, `DECISIONS.md`, `OPERATIONS.md`, `docs/protocol/`, `.env.example`, `coordination/bin/`, `tests/unit/` | high-risk-control (`docs/protocol/`, top-level docs, `coordination/bin/`) | budget test red on the old set, green on the new; grep shows each invariant stated once; no test references removed helpers |
 | 4 | R6, R7 | `pipeline/harness_preflight.py`, `native_app_readiness.py`, `status_desktop.py`, `.github/workflows/ci.yml`, `tests/unit/test_ci_supply_chain.py` | high-risk-control (workflows) | `preflight` exit 0 on Linux with transport checks; `--desktop` still fails without apps; CI green on ubuntu 3.11–3.13 and the single macOS job; pins unchanged |
@@ -311,11 +311,11 @@ Sequencing rules:
 | Metric | Now | Target |
 |---|---|---|
 | Orientation doc set | 29,214 bytes / 19 files | ≤ 12,000 bytes / ≤ 8 files |
-| Tool calls for a fresh session to reach unread mail | 2 or more (pages of ≤100) | 1 |
-| `team_wait` 50-message page overhead | 43% | ≤ 10% |
-| `team_status` default payload in a busy session | ~8.5 KB (36 msgs) | ≤ 3 KB |
+| Tool calls for a fresh session to reach unread mail | 2 or more (pages of ≤100) | 1 (Phase 1: done) |
+| `team_wait` 50-message page overhead (400-byte bodies) | 42.7% | 35.0% after Phase 1 (measured); the rest is ids, route, timestamps, receipts |
+| `team_status` default payload after 36 own 4 KB sends | 23,029 bytes | 6,123 bytes after Phase 1 (measured) |
 | Subprocesses per `status` | 243 (linear in artifacts) | ≤ 30 (cached), gate unchanged |
-| SQLite opens per 30 s `team_wait` | ~600 | ≤ 25 |
+| SQLite opens per 2 s empty `team_wait` | 42 | 3 after Phase 1 (measured) |
 | `preflight` on a Linux/CI host | exit 1, 9 FAIL | exit 0 (transport); `--desktop` opt-in |
 | CI runner minutes per run | 4 macOS jobs | 1 macOS + 3 ubuntu |
 | Historical FAIL lines in default output | 2 per `check`, 1 per `status` | 0 (kept in `--json`/`--verbose`) |

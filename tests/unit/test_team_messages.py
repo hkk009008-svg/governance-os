@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -8,6 +9,7 @@ from pathlib import Path
 import pytest
 
 import team
+import team_store
 from team_test_support import make_repo
 
 
@@ -23,7 +25,7 @@ def test_queue_acknowledgement_and_reply_are_distinct(team_repo: Path) -> None:
     queued = codex.send("claude", "Please inspect the exact range.", idempotency_key="review-1")
     assert queued["state"] == "queued"
     assert queued["acknowledged_by"] == []
-    assert queued["identity_assurance"] == team.IDENTITY_ASSURANCE
+    assert "identity_assurance" not in queued
     assert queued["grants_authority"] is False
 
     received = claude.wait(after_id=0)
@@ -68,7 +70,7 @@ def test_status_previews_preserve_metadata_and_full_own_message_readback(team_re
     assert summary["body_truncated"] is True
     assert summary["acknowledged_by"] == ["claude"]
     assert summary["replies"] == [reply["id"]]
-    assert summary["identity_assurance"] == team.IDENTITY_ASSURANCE
+    assert "identity_assurance" not in summary
     assert summary["grants_authority"] is False
     full = codex.status(message_id=queued["id"])
     assert len(full["sent"]) == 1
@@ -83,17 +85,97 @@ def test_status_previews_preserve_metadata_and_full_own_message_readback(team_re
     assert claude.status(message_id=reply["id"])["sent"][0]["acknowledged_by"] == []
 
 
-def test_status_can_read_own_message_older_than_recent_window(team_repo: Path) -> None:
+def test_status_previews_default_to_ten_and_widen_to_fifty(team_repo: Path) -> None:
     codex = team.Team(team_repo, "codex")
     oldest = codex.send("all", "oldest", idempotency_key="oldest")
     for index in range(50):
         codex.send("claude", "short", idempotency_key=f"recent-{index}")
     summaries = codex.status()["sent"]
-    assert len(summaries) == 50
-    assert oldest["id"] not in [item["id"] for item in summaries]
+    assert len(summaries) == team.STATUS_SENT_DEFAULT == 10
+    assert [item["idempotency_key"] for item in summaries] == [
+        f"recent-{index}" for index in range(40, 50)
+    ]
+    widened = codex.status(sent_limit=team.MAX_STATUS_SENT)["sent"]
+    assert len(widened) == 50
+    assert oldest["id"] not in [item["id"] for item in widened]
     assert summaries[0]["body_preview"] == "short"
     assert summaries[0]["body_truncated"] is False
     assert codex.status(message_id=oldest["id"])["sent"][0]["body"] == "oldest"
+    for invalid in (0, team.MAX_STATUS_SENT + 1, True, "5", 1.0):
+        with pytest.raises(team.TeamError, match="sent_limit"):
+            codex.status(sent_limit=invalid)  # type: ignore[arg-type]
+
+
+def test_status_reports_a_resume_cursor_that_returns_exactly_the_unread(
+    team_repo: Path,
+) -> None:
+    codex = team.Team(team_repo, "codex")
+    for index in range(120):
+        codex.send("claude", f"finding-{index}", idempotency_key=f"f-{index}")
+    first_session = team.Team(team_repo, "claude")
+    page = first_session.wait(after_id=0, limit=100)
+    first_session.wait(after_id=page["next_cursor"], limit=100)
+    first_session.close()
+
+    # A fresh process knows nothing about the earlier cursor.
+    fresh = team.Team(team_repo, "claude")
+    status = fresh.status()
+    assert next(m for m in status["members"] if m["name"] == "claude")["pending"] == 20
+    assert status["next_unread_id"] == 101
+    assert status["resume_cursor"] == 100
+    unread = fresh.wait(after_id=status["resume_cursor"], limit=100)
+    assert [item["id"] for item in unread["messages"]] == list(range(101, 121))
+    # Returned is not acknowledged: the resume point holds until the client advances.
+    assert fresh.status()["resume_cursor"] == 100
+    fresh.wait(after_id=unread["next_cursor"])
+    drained = fresh.status()
+    assert drained["next_unread_id"] is None
+    assert drained["resume_cursor"] == 120
+    assert fresh.wait(after_id=drained["resume_cursor"])["messages"] == []
+    # Own outbound traffic moves the log; the resume point follows it safely.
+    outbound = fresh.send("agy", "done", idempotency_key="done")
+    assert fresh.status()["resume_cursor"] == outbound["id"]
+    assert fresh.wait(after_id=outbound["id"])["messages"] == []
+
+
+def test_payloads_carry_no_repeated_semantics_prose(team_repo: Path) -> None:
+    codex = team.Team(team_repo, "codex")
+    claude = team.Team(team_repo, "claude")
+    for index in range(50):
+        codex.send("claude", "x" * 400, idempotency_key=f"p-{index}")
+    page = claude.wait(after_id=0, limit=50)
+    status = codex.status(sent_limit=50)
+    for payload in (page, status, page["messages"][0], status["sent"][0]):
+        assert payload["grants_authority"] is False
+        assert set(payload).isdisjoint(
+            {"identity_assurance", "cursor_semantics", "liveness"}
+        )
+    encoded = json.dumps(page, ensure_ascii=False).encode("utf-8")
+    assert b"configured member label" not in encoded
+    assert b"advancing after_id" not in encoded
+    bodies = sum(len(item["body"].encode("utf-8")) for item in page["messages"])
+    # Structural metadata only: ids, route, timestamps, receipts, and one flag.
+    assert len(encoded) - bodies < 50 * 260
+
+
+def test_wait_holds_one_connection_while_polling(
+    team_repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    claude = team.Team(team_repo, "claude")
+    opened = 0
+    real_connect = team_store.sqlite3.connect
+
+    def counting_connect(*args, **kwargs):
+        nonlocal opened
+        opened += 1
+        return real_connect(*args, **kwargs)
+
+    monkeypatch.setattr(team_store.sqlite3, "connect", counting_connect)
+    started = time.monotonic()
+    assert claude.wait(after_id=0, wait_seconds=0.6)["messages"] == []
+    assert time.monotonic() - started >= 0.6
+    # One acknowledgement session, one held reader, one activity touch.
+    assert opened <= 3
 
 
 @pytest.mark.parametrize("recipient", ("codex", "agy", "all"))
@@ -197,8 +279,9 @@ def test_same_member_instances_replay_one_log_and_share_cursor_acknowledgements(
 
     assert [item["id"] for item in first["messages"]] == [sent["id"]]
     assert [item["id"] for item in second["messages"]] == [sent["id"]]
-    assert first["cursor_semantics"] == second["cursor_semantics"]
-    assert "advancing after_id acknowledges" in first["cursor_semantics"]
+    assert set(first) == set(second) == {
+        "member", "messages", "acknowledged_through", "next_cursor", "grants_authority",
+    }
 
     advanced = team.Team(team_repo, "claude").wait(after_id=sent["id"])
     assert advanced["messages"] == []

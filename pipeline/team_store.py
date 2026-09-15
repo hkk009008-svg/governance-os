@@ -21,12 +21,11 @@ MAX_IDEMPOTENCY_KEY_BYTES = 128
 MAX_MESSAGE_ID = (1 << 53) - 1
 MAX_WAIT_SECONDS = 30.0
 MAX_READ_LIMIT = 100
-IDENTITY_ASSURANCE = "configured member label; not app or model attestation"
-CURSOR_SEMANTICS = (
-    "messages replay for the same after_id; advancing after_id acknowledges "
-    "addressed messages through that cursor and is allowed only through a cursor "
-    "returned by an earlier wait or a gap containing no unread addressed messages"
-)
+# Semantics that never change per call live in the tool descriptions and the
+# initialize instructions, not in every payload.
+STATUS_SENT_DEFAULT = 10
+MAX_STATUS_SENT = 50
+POLL_INTERVAL_SECONDS = 0.2
 CAPABILITIES = {
     "codex": ("parallel-task-orchestration", "isolated-worktrees", "long-running-goals", "workspace-implementation", "tests-and-integrations"),
     "claude": ("large-context-reasoning", "independent-diff-review", "native-claude-session-messaging", "workspace-implementation", "tests-and-visual-review"),
@@ -285,6 +284,5 @@ class Store:
             "SELECT id FROM messages WHERE reply_to=? ORDER BY id", (message_id,))]
         return {
             **dict(row), "acknowledged_by": acknowledged, "replies": replies,
-            "identity_assurance": IDENTITY_ASSURANCE,
             "grants_authority": False,
         }

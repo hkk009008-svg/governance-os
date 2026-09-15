@@ -19,7 +19,8 @@ At task start:
 1. Read the user request and applicable instructions.
 2. Inspect the branch, status, relevant diff, and tests. Preserve unfamiliar work.
 3. Call `team_status` once.
-4. Read addressed messages with `team_wait`; reply with `team_send` when useful.
+4. Read addressed messages with `team_wait` from the `resume_cursor` that
+   `team_status` reports; reply with `team_send` when useful.
 
 Each `team_send` needs a non-empty sender-scoped idempotency key. Success means
 queued, not acknowledged. Advancing `team_wait` acknowledges returned messages,

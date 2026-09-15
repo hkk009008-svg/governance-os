@@ -4,7 +4,8 @@
 
 1. Read the current user request and repository instructions.
 2. Inspect the branch, `git status --short`, relevant diff, and recent commits.
-3. Call `team_status` once and read addressed messages with `team_wait`.
+3. Call `team_status` once and read addressed messages with `team_wait` from
+   its `resume_cursor`.
 4. Start the scoped work directly.
 
 Use `team_send` for a bounded question, finding, result, or handoff. Queue
