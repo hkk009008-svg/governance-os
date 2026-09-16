@@ -100,6 +100,10 @@ def test_observation_does_not_touch_members_or_database(tmp_path: Path) -> None:
     assert before_acknowledgement["acknowledgement_receipts"] == 0
     assert before_acknowledgement["reply_messages"] == 0
     assert before_acknowledgement["pending"]["claude"] == 1
+    assert before_acknowledgement["resume"]["claude"] == {
+        "next_unread_id": queued["id"], "resume_cursor": queued["id"] - 1,
+    }
+    assert before_acknowledgement["members"]["codex"]["focus"] == ""
 
     claude.wait(after_id=0)
     claude.wait(after_id=queued["id"])
@@ -114,6 +118,40 @@ def test_observation_does_not_touch_members_or_database(tmp_path: Path) -> None:
     assert after_reply["acknowledgement_receipts"] == 1
     assert after_reply["reply_messages"] == 1
     assert after_reply["pending"]["codex"] == 1
+    assert after_reply["resume"]["claude"] == {"next_unread_id": None, "resume_cursor": 2}
+    assert after_reply["resume"]["codex"] == {"next_unread_id": 2, "resume_cursor": 1}
+
+
+def test_observation_reports_notes_and_tolerates_stores_without_them(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    claude = team.Team(repo, "claude")
+    claude.status(focus="mapping the gate", handoff="NEXT: probe")
+
+    observed = status.collect_team_transport(repo)
+
+    assert observed["state"] == "ready"
+    assert observed["members"]["claude"]["focus"] == "mapping the gate"
+    assert observed["members"]["claude"]["handoff"] == "NEXT: probe"
+
+    connection = sqlite3.connect(_store(repo))
+    try:
+        connection.executescript(
+            "CREATE TABLE members_old ("
+            "name TEXT PRIMARY KEY CHECK (name IN ('codex','claude','agy')),"
+            " instance_id TEXT NOT NULL, capabilities TEXT NOT NULL,"
+            " last_seen TEXT NOT NULL) WITHOUT ROWID;"
+            " INSERT INTO members_old SELECT name,instance_id,capabilities,last_seen FROM members;"
+            " DROP TABLE members; ALTER TABLE members_old RENAME TO members;"
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+    downgraded = status.collect_team_transport(repo)
+
+    assert downgraded["state"] == "ready"
+    assert downgraded["members"]["claude"]["focus"] == ""
+    assert downgraded["members"]["claude"]["handoff"] == ""
 
 
 def test_live_wal_is_read_without_touching_shared_files(tmp_path: Path) -> None:

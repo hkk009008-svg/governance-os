@@ -16,6 +16,7 @@ for path in (str(ROOT), str(ROOT / "pipeline")):
 
 COMMANDS: dict[tuple[str, ...], tuple[str, str, str]] = {
     ("status",): ("status", "main", "current apps, transport, Git, and review state"),
+    ("orient",): ("orient", "main", "one compact task-start digest"),
     ("check",): ("governance_verify_all", "main", "proportionate repository checks"),
     ("check", "coordination"): ("check_coordination", "main", "current formal-review state"),
     ("check", "admission"): ("ci_admission_gate", "main", "authority-range admission"),

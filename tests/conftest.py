@@ -39,6 +39,9 @@ def git_ceiling_protects_enclosing_repository(
     os.environ["GIT_CEILING_DIRECTORIES"] = (
         f"{basetemp}:{existing}" if existing else basetemp
     )
+    # Tests that fake review state must never seed the real checkout's
+    # dashboard cache; cache tests opt back in explicitly.
+    os.environ["PIPELINE_STATUS_CACHE"] = "0"
     global _executed_call_reports
     _executed_call_reports = 0
 

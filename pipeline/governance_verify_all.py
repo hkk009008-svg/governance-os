@@ -46,28 +46,33 @@ def _project_smoke() -> int:
     return 0
 
 
-def _coordination_check() -> int:
+def _coordination_check(verbose: bool = False) -> int:
     import check_coordination
     issues = check_coordination.run(ROOT / "coordination")
     fatal = [item for item in issues if item.severity == "FATAL"]
+    advisory = [item for item in issues if item.severity != "FATAL"]
     for item in issues:
-        print(f"COORDINATION {item.severity} [{item.kind}] {item.path} — {item.message}")
+        if item.severity == "FATAL" or verbose:
+            print(f"COORDINATION {item.severity} [{item.kind}] {item.path} — {item.message}")
     if fatal:
         return 1
-    print("COORDINATION — OK")
+    summary = "COORDINATION — OK"
+    if advisory and not verbose:
+        summary += f" ({len(advisory)} advisory; details: check --verbose)"
+    print(summary)
     return 0
 
 
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
     if any(arg in {"-h", "--help"} for arg in args):
-        print("usage: bin/pipeline check [--fast]")
+        print("usage: bin/pipeline check [--fast] [--verbose]")
         return 0
-    unknown = [arg for arg in args if arg != "--fast"]
+    unknown = [arg for arg in args if arg not in {"--fast", "--verbose"}]
     if unknown:
         print("unknown option: " + " ".join(unknown), file=sys.stderr)
         return 2
-    if _project_smoke() or _coordination_check():
+    if _project_smoke() or _coordination_check(verbose="--verbose" in args):
         return 1
     if "--fast" in args:
         print("FAST CHECK — PASS")

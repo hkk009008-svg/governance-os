@@ -60,7 +60,7 @@ def _readiness_labels(rows: dict) -> str:
     )
 
 
-def render_orientation_snapshot(snapshot: dict) -> str:
+def render_orientation_snapshot(snapshot: dict, *, verbose: bool = False) -> str:
     """Render compact readiness plus every pending formal request."""
 
     git = snapshot["git"]
@@ -100,6 +100,10 @@ def render_orientation_snapshot(snapshot: dict) -> str:
                 f"reply-messages={transport['reply_messages']}",
             ]
         )
+        for member in TEAM_MEMBERS:
+            focus = transport.get("members", {}).get(member, {}).get("focus")
+            if focus:
+                lines.append(f"  {member} focus: {focus}")
     elif transport["state"] == "absent":
         lines.append("Team transport: not initialized (status did not create it)")
     else:
@@ -129,12 +133,20 @@ def render_orientation_snapshot(snapshot: dict) -> str:
                 f"  Pending: {request['path']}@{commit} reviewer={request['reviewer']}"
             )
         gate = review["gate"]
-        lines.append(
+        health = (
             f"Mailbox health: {gate['status']} ({gate['fatal']} fatal, "
             f"{gate['advisory']} advisory, "
             f"{gate.get('failed_review', 0)} failed)"
         )
-        if historical := review.get("historical_failed_reviews"):
-            lines.append(f"Historical unresolved FAILs: {len(historical)} (details: status --json)")
+        historical = review.get("historical_failed_reviews") or []
+        if historical and not verbose:
+            health += "; details: status --verbose"
+        lines.append(health)
+        if verbose:
+            for item in historical:
+                lines.append(
+                    f"  Historical FAIL: {item['report_path']}@{item['report_commit']} "
+                    f"for {item['request_path']}@{item['request_commit']}"
+                )
         lines.append("Integration admission: not run (use check admission --base <sha> --head <sha>)")
     return "\n".join(lines) + "\n"

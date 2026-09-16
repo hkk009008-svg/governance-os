@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -453,3 +454,57 @@ def test_transport_content_cannot_turn_into_authority(team_repo: Path) -> None:
     received = team.Team(team_repo, "codex").wait()["messages"][0]
     assert received["grants_authority"] is False
     assert set(received).isdisjoint({"effect_authority", "verdict_authority"})
+
+
+def test_focus_and_handoff_persist_across_sessions_without_authority(team_repo: Path) -> None:
+    first = team.Team(team_repo, "claude")
+    first.status(
+        focus="implementing wait polling; owns pipeline/team_messages.py",
+        handoff="DONE: poll on data_version\nNEXT: docs",
+    )
+    first.close()
+
+    fresh = team.Team(team_repo, "claude")
+    status = fresh.status()
+    me = next(m for m in status["members"] if m["name"] == "claude")
+    assert me["focus"] == "implementing wait polling; owns pipeline/team_messages.py"
+    assert status["handoff"] == "DONE: poll on data_version\nNEXT: docs"
+    assert status["grants_authority"] is False
+    # Ordinary activity keeps the notes; other members see focus, never handoff.
+    fresh.wait()
+    fresh.send("codex", "hi", idempotency_key="hi")
+    codex = team.Team(team_repo, "codex").status()
+    claude_row = next(m for m in codex["members"] if m["name"] == "claude")
+    assert claude_row["focus"].startswith("implementing")
+    assert "handoff" not in claude_row and codex["handoff"] == ""
+    # An empty string clears one note; None leaves the other unchanged.
+    assert fresh.status(focus="")["handoff"] == "DONE: poll on data_version\nNEXT: docs"
+    assert next(m for m in fresh.status()["members"] if m["name"] == "claude")["focus"] == ""
+    for invalid in ("x" * (team.MAX_FOCUS_BYTES + 1), "two\nlines", "nul\x00", 5):
+        with pytest.raises(team.TeamError, match="focus"):
+            fresh.status(focus=invalid)  # type: ignore[arg-type]
+    with pytest.raises(team.TeamError, match="handoff"):
+        fresh.status(handoff="y" * (team.MAX_HANDOFF_BYTES + 1))
+
+
+def test_store_created_before_notes_columns_is_migrated_in_place(team_repo: Path) -> None:
+    seeded = team.Team(team_repo, "codex")
+    seeded.status()
+    connection = sqlite3.connect(seeded.store_path)
+    try:
+        connection.executescript(
+            "CREATE TABLE members_old ("
+            "name TEXT PRIMARY KEY CHECK (name IN ('codex','claude','agy')),"
+            " instance_id TEXT NOT NULL, capabilities TEXT NOT NULL,"
+            " last_seen TEXT NOT NULL) WITHOUT ROWID;"
+            " INSERT INTO members_old SELECT name,instance_id,capabilities,last_seen FROM members;"
+            " DROP TABLE members; ALTER TABLE members_old RENAME TO members;"
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+    reopened = team.Team(team_repo, "codex")
+    status = reopened.status(focus="migrated")
+    assert next(m for m in status["members"] if m["name"] == "codex")["focus"] == "migrated"
+    assert status["handoff"] == ""

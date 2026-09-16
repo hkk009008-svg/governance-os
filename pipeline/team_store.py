@@ -26,6 +26,10 @@ MAX_READ_LIMIT = 100
 STATUS_SENT_DEFAULT = 10
 MAX_STATUS_SENT = 50
 POLL_INTERVAL_SECONDS = 0.2
+# Self-declared working notes: one line of focus visible to every member and a
+# handoff note the same member reads back in its next session. Observational.
+MAX_FOCUS_BYTES = 512
+MAX_HANDOFF_BYTES = 2048
 CAPABILITIES = {
     "codex": ("parallel-task-orchestration", "isolated-worktrees", "long-running-goals", "workspace-implementation", "tests-and-integrations"),
     "claude": ("large-context-reasoning", "independent-diff-review", "native-claude-session-messaging", "workspace-implementation", "tests-and-visual-review"),
@@ -201,7 +205,8 @@ class Store:
                 CREATE TABLE IF NOT EXISTS members (
                     name TEXT PRIMARY KEY CHECK (name IN ('codex','claude','agy')),
                     instance_id TEXT NOT NULL, capabilities TEXT NOT NULL,
-                    last_seen TEXT NOT NULL
+                    last_seen TEXT NOT NULL,
+                    focus TEXT NOT NULL DEFAULT '', handoff TEXT NOT NULL DEFAULT ''
                 ) WITHOUT ROWID;
                 CREATE TABLE IF NOT EXISTS messages (
                     id INTEGER PRIMARY KEY AUTOINCREMENT
@@ -232,6 +237,14 @@ class Store:
                 ) WITHOUT ROWID;
                 """
             )
+            present = {
+                row["name"] for row in connection.execute("PRAGMA table_info(members)")
+            }
+            for column in ("focus", "handoff"):
+                if column not in present:
+                    connection.execute(
+                        f"ALTER TABLE members ADD COLUMN {column} TEXT NOT NULL DEFAULT ''"
+                    )
             identity = str(self.common_dir)
             connection.execute(
                 "INSERT OR IGNORE INTO metadata(key,value) "
@@ -255,14 +268,22 @@ class Store:
                 "MAX(cursor_frontiers.message_id,excluded.message_id)"
             )
 
-    def touch(self, member: str, instance_id: str) -> None:
+    def touch(
+        self, member: str, instance_id: str, *,
+        focus: str | None = None, handoff: str | None = None,
+    ) -> None:
+        """Record activity; a note passed as None is left as it was."""
         with self.session() as connection:
             connection.execute(
-                """INSERT INTO members(name,instance_id,capabilities,last_seen)
-                VALUES(?,?,?,?) ON CONFLICT(name) DO UPDATE SET
+                """INSERT INTO members(name,instance_id,capabilities,last_seen,focus,handoff)
+                VALUES(?,?,?,?,?,?) ON CONFLICT(name) DO UPDATE SET
                 instance_id=excluded.instance_id, capabilities=excluded.capabilities,
-                last_seen=excluded.last_seen""",
-                (member, instance_id, json.dumps(CAPABILITIES[member]), now()),
+                last_seen=excluded.last_seen,
+                focus=COALESCE(?, members.focus), handoff=COALESCE(?, members.handoff)""",
+                (
+                    member, instance_id, json.dumps(CAPABILITIES[member]), now(),
+                    focus or "", handoff or "", focus, handoff,
+                ),
             )
 
     @staticmethod

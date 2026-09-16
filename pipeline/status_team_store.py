@@ -96,25 +96,43 @@ def _query(store: Path, *, immutable: bool) -> dict:
         identity = connection.execute(
             "SELECT value FROM metadata WHERE key='git_common_dir'"
         ).fetchone()
+        # Stores created before the notes columns existed are still readable.
+        notes = {"focus", "handoff"} <= {
+            row["name"] for row in connection.execute("PRAGMA table_info(members)")
+        }
         members = {
             row["name"]: {
                 "instance_id": row["instance_id"],
                 "last_seen": row["last_seen"],
+                "focus": row["focus"] if notes else "",
+                "handoff": row["handoff"] if notes else "",
             }
             for row in connection.execute(
-                "SELECT name,instance_id,last_seen FROM members ORDER BY name"
+                "SELECT name,instance_id,last_seen"
+                + (",focus,handoff" if notes else "")
+                + " FROM members ORDER BY name"
             )
         }
-        pending = {
-            member: connection.execute(
-                "SELECT count(*) AS n FROM messages m WHERE m.sender!=? "
-                "AND (m.recipient=? OR m.recipient='all') AND NOT EXISTS "
-                "(SELECT 1 FROM deliveries d "
+        high_water = connection.execute(
+            "SELECT COALESCE(MAX(id),0) AS n FROM messages"
+        ).fetchone()["n"]
+        pending: dict[str, int] = {}
+        resume: dict[str, dict] = {}
+        for member in TEAM_MEMBERS:
+            unread = connection.execute(
+                "SELECT count(*) AS n, MIN(m.id) AS first FROM messages m "
+                "WHERE m.sender!=? AND (m.recipient=? OR m.recipient='all') "
+                "AND NOT EXISTS (SELECT 1 FROM deliveries d "
                 "WHERE d.message_id=m.id AND d.member=?)",
                 (member, member, member),
-            ).fetchone()["n"]
-            for member in TEAM_MEMBERS
-        }
+            ).fetchone()
+            pending[member] = unread["n"]
+            resume[member] = {
+                "next_unread_id": unread["first"],
+                "resume_cursor": (
+                    high_water if unread["first"] is None else unread["first"] - 1
+                ),
+            }
         queued = connection.execute("SELECT count(*) AS n FROM messages").fetchone()["n"]
         acknowledgements = connection.execute(
             "SELECT count(*) AS n FROM deliveries"
@@ -128,6 +146,7 @@ def _query(store: Path, *, immutable: bool) -> dict:
         "identity": identity["value"] if identity is not None else None,
         "members": members,
         "pending": pending,
+        "resume": resume,
         "queued_messages": queued,
         "acknowledgement_receipts": acknowledgements,
         "reply_messages": replies,
@@ -210,6 +229,10 @@ def collect_team_transport(repo_root: Path) -> dict:
             "detail": "not initialized; status did not create it",
             "members": {},
             "pending": {member: 0 for member in TEAM_MEMBERS},
+            "resume": {
+                member: {"next_unread_id": None, "resume_cursor": 0}
+                for member in TEAM_MEMBERS
+            },
             "queued_messages": 0,
             "acknowledgement_receipts": 0,
             "reply_messages": 0,

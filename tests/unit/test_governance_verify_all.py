@@ -28,8 +28,36 @@ def isolated_suite(tmp_path: Path, repo_root: Path, monkeypatch: pytest.MonkeyPa
     # These controls isolate the real full-check pytest invocation, not native
     # app configuration or unrelated repository mailbox contents.
     monkeypatch.setattr(verifier, "_project_smoke", lambda: 0)
-    monkeypatch.setattr(verifier, "_coordination_check", lambda: 0)
+    monkeypatch.setattr(verifier, "_coordination_check", lambda verbose=False: 0)
     return suite
+
+
+def test_fast_check_accepts_verbose_and_rejects_unknown_options(isolated_suite: Path, capfd) -> None:
+    assert verifier.main(["--fast", "--verbose"]) == 0
+    assert "FAST CHECK — PASS" in capfd.readouterr().out
+    assert verifier.main(["--bogus"]) == 2
+
+
+def test_coordination_advisories_are_summarized_unless_verbose(monkeypatch, capsys) -> None:
+    import check_coordination
+
+    advisory = [check_coordination.CoordIssue(
+        "mailbox/sent/old.md", "historical_fail", "ADVISORY", "unsuperseded historical FAIL",
+    )]
+    monkeypatch.setattr(check_coordination, "run", lambda *_a, **_k: advisory)
+    assert verifier._coordination_check() == 0
+    compact = capsys.readouterr().out
+    assert "COORDINATION — OK (1 advisory; details: check --verbose)" in compact
+    assert "historical_fail" not in compact
+    assert verifier._coordination_check(verbose=True) == 0
+    assert "COORDINATION ADVISORY [historical_fail]" in capsys.readouterr().out
+
+    fatal = [check_coordination.CoordIssue(
+        "mailbox/sent", "invalid_formal_artifact", "FATAL", "broken",
+    )]
+    monkeypatch.setattr(check_coordination, "run", lambda *_a, **_k: fatal)
+    assert verifier._coordination_check() == 1
+    assert "COORDINATION FATAL [invalid_formal_artifact]" in capsys.readouterr().out
 
 
 @pytest.mark.parametrize("inherited_guard", (None, "0", "1"))

@@ -9,9 +9,10 @@ import uuid
 from pathlib import Path
 
 from team_store import (
-    CAPABILITIES, MAX_BODY_BYTES, MAX_IDEMPOTENCY_KEY_BYTES, MAX_READ_LIMIT,
-    MAX_MESSAGE_ID, MAX_STATUS_SENT, MAX_WAIT_SECONDS, MEMBERS,
-    POLL_INTERVAL_SECONDS, RECIPIENTS, STATUS_SENT_DEFAULT, Store, TeamError, now,
+    CAPABILITIES, MAX_BODY_BYTES, MAX_FOCUS_BYTES, MAX_HANDOFF_BYTES,
+    MAX_IDEMPOTENCY_KEY_BYTES, MAX_READ_LIMIT, MAX_MESSAGE_ID, MAX_STATUS_SENT,
+    MAX_WAIT_SECONDS, MEMBERS, POLL_INTERVAL_SECONDS, RECIPIENTS,
+    STATUS_SENT_DEFAULT, Store, TeamError, now,
 )
 
 
@@ -241,8 +242,21 @@ class Team:
             "grants_authority": False,
         }
 
+    @staticmethod
+    def _validate_note(value: object, label: str, limit: int, *, one_line: bool) -> str | None:
+        if value is None:
+            return None
+        if not isinstance(value, str) or "\x00" in value:
+            raise TeamError(f"{label} must be UTF-8 text without NUL bytes")
+        if one_line and ("\n" in value or "\r" in value):
+            raise TeamError(f"{label} must be one line")
+        if len(value.encode("utf-8")) > limit:
+            raise TeamError(f"{label} exceeds {limit} UTF-8 bytes")
+        return value.strip()
+
     def status(
-        self, *, message_id: int | None = None, sent_limit: int | None = None
+        self, *, message_id: int | None = None, sent_limit: int | None = None,
+        focus: str | None = None, handoff: str | None = None,
     ) -> dict:
         """Return recent sent previews, or one own sent message in full.
 
@@ -250,7 +264,9 @@ class Team:
         Activity and pending counts are never a liveness or authority claim.
         ``resume_cursor`` is the ``after_id`` that makes ``wait`` return exactly
         the caller's unacknowledged messages, or wait for new ones when there
-        are none.
+        are none. ``focus`` (one line, visible to every member) and ``handoff``
+        (read back by this member's next session) are self-declared notes; an
+        empty string clears one and None leaves it unchanged.
         """
         if message_id is not None and (
             isinstance(message_id, bool) or not isinstance(message_id, int)
@@ -264,7 +280,9 @@ class Team:
             or not 1 <= sent_limit <= MAX_STATUS_SENT
         ):
             raise TeamError(f"sent_limit must be an integer from 1 to {MAX_STATUS_SENT}")
-        self._touch()
+        focus = self._validate_note(focus, "focus", MAX_FOCUS_BYTES, one_line=True)
+        handoff = self._validate_note(handoff, "handoff", MAX_HANDOFF_BYTES, one_line=False)
+        self.store.touch(self.member, self.instance_id, focus=focus, handoff=handoff)
         with self.store.session() as connection:
             if message_id is not None and connection.execute(
                 "SELECT id FROM messages WHERE id=? AND sender=?",
@@ -272,7 +290,7 @@ class Team:
             ).fetchone() is None:
                 raise TeamError("message_id is not a message sent by this member")
             observed = {row["name"]: row for row in connection.execute(
-                "SELECT name,capabilities,last_seen FROM members"
+                "SELECT name,capabilities,last_seen,focus,handoff FROM members"
             )}
             members = []
             for name in MEMBERS:
@@ -284,6 +302,7 @@ class Team:
                     "name": name, "last_seen": row["last_seen"] if row else None,
                     "capabilities": json.loads(row["capabilities"]) if row else list(CAPABILITIES[name]),
                     "pending": pending,
+                    "focus": row["focus"] if row else "",
                 })
             next_unread = connection.execute(
                 f"SELECT MIN(m.id) AS id {_UNREAD_SQL}",
@@ -310,10 +329,12 @@ class Team:
                         body_bytes=len(body),
                         body_truncated=len(body) > _STATUS_PREVIEW_BYTES,
                     )
+        own = observed.get(self.member)
         return {
             "member": self.member, "members": members,
             "next_unread_id": next_unread,
             "resume_cursor": high_water if next_unread is None else next_unread - 1,
+            "handoff": own["handoff"] if own else "",
             "sent": sent,
             "store": str(self.store_path),
             "grants_authority": False,
