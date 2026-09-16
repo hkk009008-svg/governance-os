@@ -72,13 +72,31 @@ def _cache_enabled() -> bool:
     return os.environ.get("PIPELINE_STATUS_CACHE", "1") != "0"
 
 
+def _entry_digest(entry: os.DirEntry, info: os.stat_result) -> str:
+    """SHA-256 of a regular mailbox entry's bytes; symlinks and others get a marker."""
+    if not stat.S_ISREG(info.st_mode):
+        return "not-a-regular-file"
+    descriptor = os.open(
+        entry.path,
+        os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0),
+    )
+    try:
+        handle = os.fdopen(descriptor, "rb")
+    except OSError:
+        os.close(descriptor)
+        raise
+    with handle:
+        return hashlib.file_digest(handle, "sha256").hexdigest()
+
+
 def _review_state_key(repo_root: Path) -> tuple[Path, str] | None:
     """Fingerprint everything the review state depends on, or None if unknown.
 
     HEAD, the committed mailbox tree, every worktree mailbox entry (inode,
-    size, mtime, mode), and the validator modules' bytes all enter the key, so
-    a new commit, a tampered artifact, or a code change is a miss, never a
-    stale hit.
+    size, mtime, mode, and a digest of its bytes), and the validator modules'
+    bytes all enter the key, so a new commit, a tampered artifact, or a code
+    change is a miss, never a stale hit. The digest matters: a same-length
+    rewrite with its timestamp restored leaves every stat field unchanged.
     """
     import check_coordination  # type: ignore
     import compact_pair_loop  # type: ignore
@@ -99,7 +117,7 @@ def _review_state_key(repo_root: Path) -> tuple[Path, str] | None:
                     info = entry.stat(follow_symlinks=False)
                     parts.append(
                         f"{entry.name}:{info.st_mode}:{info.st_ino}:"
-                        f"{info.st_size}:{info.st_mtime_ns}"
+                        f"{info.st_size}:{info.st_mtime_ns}:{_entry_digest(entry, info)}"
                     )
         except FileNotFoundError:
             parts.append("worktree-mailbox-absent")

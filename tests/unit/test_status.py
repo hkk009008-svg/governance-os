@@ -198,13 +198,26 @@ def test_review_state_cache_hits_only_for_an_identical_repository_fingerprint(
     assert len(calls) <= 4 < cold_calls
     assert cache.is_file() and os.stat(cache).st_mode & 0o777 == 0o600
 
-    # Tampering with a published artifact in the worktree is a miss, not a stale PASS.
+    # Tampering with a published artifact in the worktree is a miss, not a stale
+    # PASS: first a different-length rewrite, then a same-length rewrite with
+    # the timestamp restored, which leaves every stat field unchanged and only
+    # a digest of the bytes can catch.
     original = (root / request).read_bytes()
+    before = os.stat(root / request)
     (root / request).write_bytes(b"tampered\n")
     calls.clear()
     assert status._collect_review_state(root)["gate"]["status"] == "FAIL"
     assert len(calls) > 4
     (root / request).write_bytes(original)
+    assert status._collect_review_state(root)["gate"]["status"] == "PASS"
+    evasion = original.replace(b"Review the exact", b"Ignore the exact")
+    assert len(evasion) == len(original) and evasion != original
+    (root / request).write_bytes(evasion)
+    os.utime(root / request, ns=(before.st_atime_ns, before.st_mtime_ns))
+    assert os.stat(root / request).st_mtime_ns == before.st_mtime_ns
+    assert status._collect_review_state(root)["gate"]["status"] == "FAIL"
+    (root / request).write_bytes(original)
+    os.utime(root / request, ns=(before.st_atime_ns, before.st_mtime_ns))
     assert status._collect_review_state(root)["gate"]["status"] == "PASS"
 
     # A new commit is a miss; a corrupt cache file is ignored and replaced.
