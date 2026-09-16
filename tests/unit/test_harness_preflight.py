@@ -296,8 +296,36 @@ def test_main_fails_when_any_required_app_check_fails(
         lambda *_a: preflight.Result("agy-permission", True, "fixture"),
     )
 
-    assert preflight.main(["--repo-root", str(repo_root)]) == 1
+    assert preflight.main(["--repo-root", str(repo_root), "--desktop"]) == 1
     assert "FAIL agy" in capsys.readouterr().out
+
+
+def test_desktop_checks_are_opt_in_off_macos_and_default_on_it(
+    repo_root: Path, monkeypatch, capsys,
+) -> None:
+    green = preflight.Result("fixture", True, "green")
+    monkeypatch.setattr(preflight, "check_team_configs", lambda *_a: [green])
+    monkeypatch.setattr(preflight, "check_team_handshakes", lambda *_a: [green])
+    monkeypatch.setattr(
+        preflight, "check_apps", lambda *_a: [preflight.Result("agy", False, "missing")]
+    )
+    monkeypatch.setattr(preflight, "check_native_discovery", lambda *_a: [])
+    monkeypatch.setattr(
+        preflight, "check_agy_permission",
+        lambda *_a: preflight.Result("agy-cli-permission", True, "fixture"),
+    )
+
+    monkeypatch.setattr(preflight, "desktop_checks_default", lambda: False)
+    assert preflight.main(["--repo-root", str(repo_root)]) == 0
+    output = capsys.readouterr().out
+    assert "SKIP desktop" in output and "FAIL agy" not in output
+    assert preflight.main(["--repo-root", str(repo_root), "--desktop"]) == 1
+    assert "FAIL agy" in capsys.readouterr().out
+
+    monkeypatch.setattr(preflight, "desktop_checks_default", lambda: True)
+    assert preflight.main(["--repo-root", str(repo_root)]) == 1
+    assert "SKIP desktop" not in capsys.readouterr().out
+    assert preflight.main(["--repo-root", str(repo_root), "--no-desktop"]) == 0
 
 
 def test_main_requires_native_discovery_and_agy_permission(
@@ -317,7 +345,7 @@ def test_main_requires_native_discovery_and_agy_permission(
         "check_agy_permission",
         lambda *_a: preflight.Result("agy-cli-permission", True, "green"),
     )
-    assert preflight.main(["--repo-root", str(repo_root)]) == 1
+    assert preflight.main(["--repo-root", str(repo_root), "--desktop"]) == 1
     assert "FAIL agy-native-mcp" in capsys.readouterr().out
 
     monkeypatch.setattr(preflight, "check_native_discovery", lambda *_a: [green])
@@ -326,7 +354,7 @@ def test_main_requires_native_discovery_and_agy_permission(
         "check_agy_permission",
         lambda *_a: preflight.Result("agy-cli-permission", False, "ask mode"),
     )
-    assert preflight.main(["--repo-root", str(repo_root)]) == 1
+    assert preflight.main(["--repo-root", str(repo_root), "--desktop"]) == 1
     assert "FAIL agy-cli-permission" in capsys.readouterr().out
 
 

@@ -15,11 +15,14 @@ permissions:
 
 jobs:
   smoke:
+    # The one macOS job: the desktop apps run there, so the governance gates
+    # and the full suite are exercised once on that platform.
     name: ci_smoke (governance gates + runtime invariants)
     runs-on: macos-latest
     timeout-minutes: 15
     env:
       PIP_DISABLE_PIP_VERSION_CHECK: '1'
+      PIPELINE_REQUIRE_EXECUTED_TEST: '1'
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
@@ -34,10 +37,11 @@ jobs:
 
       - run: pip install --require-hashes -r requirements-dev.txt
       - run: bin/pipeline check --fast
+      - run: python -m pytest tests --tb=short -q
 
   pytest:
     name: pytest tests (Python ${{ matrix.python-version }})
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
       fail-fast: false
@@ -59,4 +63,5 @@ jobs:
           cache-dependency-path: requirements-dev.txt
 
       - run: pip install --require-hashes -r requirements-dev.txt
+      - run: bin/pipeline preflight --no-desktop
       - run: python -m pytest tests --tb=short -q

@@ -15,7 +15,7 @@ Nothing in it grants review, push, merge, or effect authority.
 | `bin/pipeline check` (fresh `.venv`, Linux, Python 3.11) | 264 passed in 40s; FULL CHECK PASS; 2 ADVISORY lines every run |
 | `bin/pipeline check admission --base 9644a85 --head 9d8d956` | structurally admitted, 6 authority commits, 0.18s |
 | `bin/pipeline status` | 0.56s; Apps `FAIL` ×3 (no `/Applications`); transport ready; `Historical unresolved FAILs: 2` |
-| `bin/pipeline preflight` | exit 1: 9 FAIL / 6 PASS on any non-macOS host (handshakes all PASS) |
+| `bin/pipeline preflight` | exit 1: 8 FAIL / 6 PASS on any non-macOS host (handshakes all PASS) |
 | `team_status`, `team_wait` from this session | work; store empty; each response carries 353 bytes of fixed prose |
 | Orientation doc set (19 files) | 29,214 bytes ≈ 7,300 tokens |
 | History | 227 commits in 3 weeks, 51 merges, 78 `review:` commits, 22 formal artifacts |
@@ -143,7 +143,7 @@ files and about 20 subprocesses to every future `status` and `check`.
 **F17. Readiness is macOS-desktop-only, but CI and cloud are not.**
 `check_apps` reads `/Applications/*.app/Contents/Info.plist`;
 `native_app_readiness` reads `~/Library/Application Support` and `~/.gemini`.
-On this host `preflight` exits 1 with 9 FAILs and `status` prints `Apps:
+On this host `preflight` exits 1 with 8 FAILs and `status` prints `Apps:
 codex=FAIL claude=FAIL agy=FAIL` even though the transport is fully ready.
 About 660 test lines (15% of the suite) cover desktop discovery. CI runs all
 four jobs on `macos-latest` although the suite passes on Linux (264 passed
@@ -290,7 +290,7 @@ different model family than the author.
 | 1 | R1, R2, I1, I3 (implemented on this branch; awaiting its exact-range review) | `pipeline/team_messages.py`, `team_store.py`, `team_mcp.py`, `team.py`, `tests/unit/test_team_messages.py`, `test_team_mcp.py`, orientation lines in `AGENTS.md`, `OPERATIONS.md`, `docs/protocol/peer.md` | high-risk-control (transport) | byte counts before/after on the 120-message probe; cursor experiment re-run showing one call to unread; reversion of the skip guard still fails its test; class-5 probe (no cross-member body in status) unchanged |
 | 2 | R3, I2, I4, I10 (implemented on this branch; I4 moved here because `orient` reads focus and handoff) | `pipeline/status*.py`, `governance_verify_all.py`, new `pipeline/orient.py`, `cli.py`, `team_store.py`, `team_messages.py`, `team_mcp.py`, `tests/conftest.py`, `tests/unit/test_status*.py`, `test_team_*.py`, new `test_orient.py`, `OPERATIONS.md` | high-risk-control until I9 lands (then material-behavior) | subprocess count ≤ 30 per warm `status`; `orient` output ≤ 40 lines; cache misses on HEAD change and worktree tampering (reversion test); advisories present in `--json`/`--verbose`; notes columns migrate in place |
 | 3 | R4, R5, R8, I6, I7 (implemented on this branch) | `AGENTS.md`, `CLAUDE.md`, `README.md`, `ARCHITECTURE.md`, `DECISIONS.md`, `OPERATIONS.md`, `coordination/README.md`, `docs/protocol/` (five files removed), `.env.example`, `coordination/bin/`, `tests/unit/formal_review_support.py`, new `tests/unit/test_orientation_docs.py` | high-risk-control (`docs/protocol/`, top-level docs, `coordination/bin/`) | budget test red on the old set, green on the new; grep shows each invariant stated once; no test references removed helpers |
-| 4 | R6, R7 | `pipeline/harness_preflight.py`, `native_app_readiness.py`, `status_desktop.py`, `.github/workflows/ci.yml`, `tests/unit/test_ci_supply_chain.py` | high-risk-control (workflows) | `preflight` exit 0 on Linux with transport checks; `--desktop` still fails without apps; CI green on ubuntu 3.11–3.13 and the single macOS job; pins unchanged |
+| 4 | R6, R7 (implemented on this branch) | `pipeline/harness_preflight.py`, `status_desktop.py`, `.github/workflows/ci.yml`, `admission.yml`, `tests/unit/test_ci_supply_chain.py`, `test_harness_preflight.py`, `test_status.py`, `OPERATIONS.md` | high-risk-control (workflows) | `preflight` exit 0 on Linux with transport checks; `--desktop` still fails without apps; CI green on ubuntu 3.11–3.13 and the single macOS job; pins unchanged |
 | 5 | I4, I5, I8, I9 | `pipeline/team_store.py`, `team_messages.py`, `team_mcp.py`, `compact_pair_loop.py`, `mailbox_writer.py`, `codex_protocol_model.py`, `ci_admission_gate.py`, `config/model-families.toml`, `OPERATIONS.md` | high-risk-control (schema, admission, authority list) | `review publish` refuses at wrong HEAD (negative test); `land-check` rejects a squash landing and accepts a byte-clean merge; author-by-prefix admits a point release while reviewer-by-prefix is refused (evasion test); narrowed surface list still catches every trust-granting module (reversion: remove one, gate goes red) |
 | 6 | I11–I14 | store, `orient`, `team_send` | high-risk-control | only opened after two weeks of Phase 5 use show a concrete gap; each item its own range |
 
@@ -316,8 +316,8 @@ Sequencing rules:
 | `team_status` default payload after 36 own 4 KB sends | 23,029 bytes | 6,123 bytes after Phase 1 (measured) |
 | Subprocesses per `status` review state | 243 (linear in artifacts) | 3 warm / 242 cold after Phase 2 (measured); `check` and the gate unchanged |
 | SQLite opens per 2 s empty `team_wait` | 42 | 3 after Phase 1 (measured) |
-| `preflight` on a Linux/CI host | exit 1, 9 FAIL | exit 0 (transport); `--desktop` opt-in |
-| CI runner minutes per run | 4 macOS jobs | 1 macOS + 3 ubuntu |
+| `preflight` on a Linux/CI host | exit 1, 8 FAIL | exit 0 with 6 PASS after Phase 4 (measured); `--desktop` forces the checks and still exits 1 without the apps |
+| CI runner minutes per run | 4 macOS jobs (plus admission on macOS) | 1 macOS + 3 ubuntu after Phase 4; admission on ubuntu |
 | Historical FAIL lines in default output | 2 per `check`, 1 per `status` | 0 (kept in `--json`/`--verbose`) |
 | Model registry edits needed for an author point release | 1 high-risk review | 0 |
 | Review publish steps (author) | 4 commands | 1 (`review publish`) |

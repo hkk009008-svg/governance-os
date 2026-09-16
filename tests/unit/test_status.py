@@ -104,6 +104,35 @@ def test_render_foregrounds_apps_transport_and_formal_gate() -> None:
     assert "Integration admission: not run" in rendered
 
 
+def test_desktop_readiness_checks_app_bundles_only_where_they_can_exist(
+    repo_root, monkeypatch,
+) -> None:
+    import harness_preflight
+    import status_desktop
+
+    monkeypatch.setattr(
+        harness_preflight, "check_apps",
+        lambda *_a: [harness_preflight.Result(m, False, "missing") for m in MEMBERS],
+    )
+    monkeypatch.setattr(harness_preflight, "desktop_checks_default", lambda: False)
+    off = status_desktop.collect_desktop_readiness(repo_root)
+    assert off["apps"] == {} and off["apps_checked"] is False and off["ready"] is True
+    assert "not checked" in off["detail"]
+    rendered = status.render_orientation_snapshot({
+        "generated_at": "now", "git": {"sha": "abc", "branch": "main", "dirty": 0},
+        "desktop": off, "team_transport": _transport(), "formal_review": None,
+    })
+    assert "Apps: not checked on this platform (bin/pipeline preflight --desktop)" in rendered
+    assert "App configs: codex=ready claude=ready agy=ready" in rendered
+
+    monkeypatch.setattr(harness_preflight, "desktop_checks_default", lambda: True)
+    on = status_desktop.collect_desktop_readiness(repo_root)
+    assert set(on["apps"]) == set(MEMBERS) and on["apps_checked"] is True
+    assert on["ready"] is False
+    forced = status_desktop.collect_desktop_readiness(repo_root, desktop=False)
+    assert forced["ready"] is True
+
+
 def test_render_shows_focus_and_hides_historical_fails_unless_verbose() -> None:
     snapshot = {
         "generated_at": "2026-09-02T00:00:00Z",

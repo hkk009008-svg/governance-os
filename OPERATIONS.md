@@ -26,7 +26,9 @@ also runs the full suite and requires at least one executed test, ignoring
 inherited `PYTEST_ADDOPTS` and `PYTEST_PLUGINS`. Use focused pytest runs while
 iterating and one proportionate final pass. Investigate unexpected failures
 before changing behavior; a green check proves only the paths it executed.
-`preflight` exits nonzero until every checked binding and handshake passes.
+`preflight` exits nonzero until every checked binding and handshake passes;
+app bundle and native discovery checks run on macOS by default and anywhere
+with `--desktop`.
 
 ## Formal review
 
