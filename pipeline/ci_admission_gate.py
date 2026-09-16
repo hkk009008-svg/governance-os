@@ -54,9 +54,12 @@ import mailbox_writer  # noqa: E402
 import protocol_mailbox  # noqa: E402
 
 # Authority surfaces: executable authority, side-effect gating, trust-granting
-# composition, and the integration gate itself. Directory entries end with a
-# slash and match by prefix; file entries match exactly. Extending this list
-# is itself an authority-surface change, so the extension gets reviewed.
+# composition, instructions that members execute, and the integration gate
+# itself. Directory entries end with a slash and match by prefix; file entries
+# match exactly. Extending this list is itself an authority-surface change, so
+# the extension gets reviewed. Reference documents (README, ARCHITECTURE,
+# OPERATIONS) describe the harness rather than instruct it and keep
+# proportionate review instead.
 AUTHORITY_SURFACES: tuple[str, ...] = (
     ".agents/plugins/",
     ".agents/skills/",
@@ -70,13 +73,9 @@ AUTHORITY_SURFACES: tuple[str, ...] = (
     "config/",
     ":(glob)tests/**/conftest.py",
     "AGENTS.md",
-    "ARCHITECTURE.md",
     "bin/pipeline",
     "CLAUDE.md",
-    "OPERATIONS.md",
-    "README.md",
     "conftest.py",
-    "coordination/bin/",
     "coordination/mailbox/kinds.txt",
     "docs/protocol/",
     "pyproject.toml",
@@ -105,6 +104,18 @@ AUTHORITY_SURFACES: tuple[str, ...] = (
     "tox.ini",
     "usercustomize.py",
 )
+
+# Harness modules that only observe and render state. They grant, validate,
+# publish, and dispatch nothing, so a change to one of them keeps
+# proportionate review instead of the high-risk gate. Every other file under
+# pipeline/ stays an authority surface; adding a module here is itself an
+# authority-surface change.
+OBSERVATIONAL_MODULES: frozenset[str] = frozenset({
+    "pipeline/orient.py",
+    "pipeline/status.py",
+    "pipeline/status_desktop.py",
+    "pipeline/status_team_store.py",
+})
 
 _MAILBOX_SENT = "coordination/mailbox/sent/"
 _REPORT_SUFFIX = "-verification-report.md"
@@ -172,7 +183,9 @@ def resolve_range(root: Path, base: str | None, head: str | None) -> tuple[str, 
 
 
 def _surface_pathspecs() -> list[str]:
-    return [surface.rstrip("/") for surface in AUTHORITY_SURFACES]
+    return [surface.rstrip("/") for surface in AUTHORITY_SURFACES] + [
+        f":(exclude){module}" for module in sorted(OBSERVATIONAL_MODULES)
+    ]
 
 
 def authority_commits(root: Path, base: str, head: str) -> dict[str, tuple[str, ...]]:

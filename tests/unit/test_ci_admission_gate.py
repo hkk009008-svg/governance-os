@@ -44,6 +44,32 @@ def test_exact_test_surface_entries_exist(repo_root):
             assert (repo_root / path).is_file(), path
 
 
+def test_observational_modules_are_real_and_not_also_listed(repo_root):
+    for module in gate.OBSERVATIONAL_MODULES:
+        assert module.startswith("pipeline/") and (repo_root / module).is_file(), module
+        assert module not in gate.AUTHORITY_SURFACES
+    assert "pipeline/" in gate.AUTHORITY_SURFACES
+    for reference in ("README.md", "ARCHITECTURE.md", "OPERATIONS.md"):
+        assert reference not in gate.AUTHORITY_SURFACES
+
+
+@pytest.mark.parametrize("path,admitted", [
+    ("pipeline/status.py", True),
+    ("pipeline/orient.py", True),
+    ("README.md", True),
+    ("pipeline/team_store.py", False),
+    ("pipeline/review_flow.py", False),
+    ("pipeline/status_extra.py", False),
+    ("AGENTS.md", False),
+])
+def test_only_observational_modules_and_reference_docs_skip_the_gate(tmp_path, path, admitted):
+    root = tmp_path / "repo"
+    base = init_repo(root)
+    head = commit(root, {path: "# changed\n"}, "change")
+    outcome = gate.evaluate(root, base, head)
+    assert outcome.admitted is admitted, gate.render(outcome)
+
+
 @pytest.mark.parametrize("mutation", ["delete", "rewrite", "restore", "rename", "symlink"])
 @pytest.mark.parametrize("introduced_in_range", [False, True])
 def test_formal_artifact_mutations_block_even_mailbox_only_ranges(

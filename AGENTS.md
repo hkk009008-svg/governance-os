@@ -50,8 +50,9 @@ authority-surface commit states its rationale in the commit body.
 `reviewer` owns one GO, NITS, or FAIL verdict for the exact committed range.
 High-risk controls need a different model family and abuse-class analysis.
 AGY may author, test, and challenge, but not issue the verdict. Publish only
-`verify-request` and `verification-report`, through `bin/pipeline mail send`,
-into `coordination/mailbox/sent/`: artifacts are append-only and a verdict is
+`verify-request` and `verification-report`, with `review publish` and
+`review accept` (the fixed writer behind `bin/pipeline mail send`), into
+`coordination/mailbox/sent/`: artifacts are append-only and a verdict is
 retired only by a valid `Supersedes` report.
 
 ## Effects

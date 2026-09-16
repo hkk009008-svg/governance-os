@@ -19,14 +19,16 @@ ORIENTATION_DOCS = (
 )
 # Total bytes a member reads to orient. Raise it only with a stated reason in
 # the same commit. The 2026-09-15 analysis measured 29,214 bytes over 19
-# files; the consolidated set measured about 14,400 bytes over 8 files.
-BUDGET_BYTES = 15_000
+# files; the consolidated set measured about 14,800 bytes over 8 files once
+# the review publish/accept/land-check procedure was documented, so the
+# budget leaves roughly 700 bytes of headroom for corrections.
+BUDGET_BYTES = 15_500
 RETIRED_SURFACES = (
     "seat", "marker metadata", "capacity packet", "RUNBOOK", "TRANSFER",
     "four-seat", "pipeline-python", ".env.example", "continuation.md",
     "peer.md", "independence-first",
 )
-_COMMAND = re.compile(r"bin/pipeline ((?:[a-z]+)(?: [a-z]+)?)")
+_COMMAND = re.compile(r"bin/pipeline ((?:[a-z][a-z-]*)(?: [a-z][a-z-]*)?)")
 
 
 def _texts(repo_root: Path) -> dict[str, str]:

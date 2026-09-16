@@ -291,7 +291,7 @@ different model family than the author.
 | 2 | R3, I2, I4, I10 (implemented on this branch; I4 moved here because `orient` reads focus and handoff) | `pipeline/status*.py`, `governance_verify_all.py`, new `pipeline/orient.py`, `cli.py`, `team_store.py`, `team_messages.py`, `team_mcp.py`, `tests/conftest.py`, `tests/unit/test_status*.py`, `test_team_*.py`, new `test_orient.py`, `OPERATIONS.md` | high-risk-control until I9 lands (then material-behavior) | subprocess count ≤ 30 per warm `status`; `orient` output ≤ 40 lines; cache misses on HEAD change and worktree tampering (reversion test); advisories present in `--json`/`--verbose`; notes columns migrate in place |
 | 3 | R4, R5, R8, I6, I7 (implemented on this branch) | `AGENTS.md`, `CLAUDE.md`, `README.md`, `ARCHITECTURE.md`, `DECISIONS.md`, `OPERATIONS.md`, `coordination/README.md`, `docs/protocol/` (five files removed), `.env.example`, `coordination/bin/`, `tests/unit/formal_review_support.py`, new `tests/unit/test_orientation_docs.py` | high-risk-control (`docs/protocol/`, top-level docs, `coordination/bin/`) | budget test red on the old set, green on the new; grep shows each invariant stated once; no test references removed helpers |
 | 4 | R6, R7 (implemented on this branch) | `pipeline/harness_preflight.py`, `status_desktop.py`, `.github/workflows/ci.yml`, `admission.yml`, `tests/unit/test_ci_supply_chain.py`, `test_harness_preflight.py`, `test_status.py`, `OPERATIONS.md` | high-risk-control (workflows) | `preflight` exit 0 on Linux with transport checks; `--desktop` still fails without apps; CI green on ubuntu 3.11–3.13 and the single macOS job; pins unchanged |
-| 5 | I4, I5, I8, I9 | `pipeline/team_store.py`, `team_messages.py`, `team_mcp.py`, `compact_pair_loop.py`, `mailbox_writer.py`, `codex_protocol_model.py`, `ci_admission_gate.py`, `config/model-families.toml`, `OPERATIONS.md` | high-risk-control (schema, admission, authority list) | `review publish` refuses at wrong HEAD (negative test); `land-check` rejects a squash landing and accepts a byte-clean merge; author-by-prefix admits a point release while reviewer-by-prefix is refused (evasion test); narrowed surface list still catches every trust-granting module (reversion: remove one, gate goes red) |
+| 5 | I5, I8, I9 (implemented on this branch; I4 landed in Phase 2) | new `pipeline/review_flow.py`, `cli.py`, `codex_protocol_model.py`, `ci_admission_gate.py`, `config/model-families.toml`, `tests/unit/test_review_flow.py`, `test_codex_protocol_model.py`, `test_model_families_config.py`, `test_ci_admission_gate.py`, `AGENTS.md`, `OPERATIONS.md` | high-risk-control (admission, authority list) | `review publish` and `review accept` refuse at the wrong HEAD (negative tests); `land-check` reports a moved base as not ready and a fast-forwardable chain as ready; author-by-prefix admits a point release while reviewer-by-prefix and retired IDs are refused (evasion tests); observational modules and reference docs skip the gate while every other module still trips it |
 | 6 | I11–I14 | store, `orient`, `team_send` | high-risk-control | only opened after two weeks of Phase 5 use show a concrete gap; each item its own range |
 
 Sequencing rules:
@@ -310,7 +310,7 @@ Sequencing rules:
 
 | Metric | Now | Target |
 |---|---|---|
-| Orientation doc set | 29,214 bytes / 19 files | about 14,400 bytes / 8 files after Phase 3 (measured; the 12,000 target cost procedure text members need, so the budget test pins 15,000) |
+| Orientation doc set | 29,214 bytes / 19 files | about 14,800 bytes / 8 files after Phases 3 and 5 (measured; the 12,000 target cost procedure text members need, so the budget test pins 15,500) |
 | Tool calls for a fresh session to reach unread mail | 2 or more (pages of ≤100) | 1 (Phase 1: done) |
 | `team_wait` 50-message page overhead (400-byte bodies) | 42.7% | 35.0% after Phase 1 (measured); the rest is ids, route, timestamps, receipts |
 | `team_status` default payload after 36 own 4 KB sends | 23,029 bytes | 6,123 bytes after Phase 1 (measured) |
@@ -319,8 +319,8 @@ Sequencing rules:
 | `preflight` on a Linux/CI host | exit 1, 8 FAIL | exit 0 with 6 PASS after Phase 4 (measured); `--desktop` forces the checks and still exits 1 without the apps |
 | CI runner minutes per run | 4 macOS jobs (plus admission on macOS) | 1 macOS + 3 ubuntu after Phase 4; admission on ubuntu |
 | Historical FAIL lines in default output | 2 per `check`, 1 per `status` | 0 (kept in `--json`/`--verbose`) |
-| Model registry edits needed for an author point release | 1 high-risk review | 0 |
-| Review publish steps (author) | 4 commands | 1 (`review publish`) |
+| Model registry edits needed for an author point release | 1 high-risk review | 0 after Phase 5 (measured: an unregistered point release of an admitted family authors; reviewers stay exact) |
+| Review publish steps (author) | 4 commands | 1 (`review publish`) after Phase 5; reviewer 1 (`review accept`); `land-check` before landing |
 
 ## 6. Constraints honored
 
@@ -331,6 +331,8 @@ Sequencing rules:
 - Formal artifacts stay append-only and exact-range; I5 only automates the
   commands that already exist and refuses at the wrong HEAD (D4, D5).
 - Reviewer admission stays exact-match and different-family (I8 relaxes
-  authors only).
+  authors only, and never revives a registered but retired ID).
+- Phase 6 stays gated on two weeks of use after Phases 1 to 5 land; it was
+  not implemented with the rest.
 - Nothing here authorizes push, merge, release, spend, destructive action, or
   live-data mutation; each phase's landing needs exact current user authority.
