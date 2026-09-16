@@ -12,6 +12,7 @@ import os
 import plistlib
 import select
 import subprocess
+import sys
 import tempfile
 import tomllib
 from pathlib import Path
@@ -45,6 +46,11 @@ CONFIG_PATHS = {
     "agy": ".agents/plugins/pipeline-team/mcp_config.json",
 }
 AGY_PLUGIN_MANIFEST = ".agents/plugins/pipeline-team/plugin.json"
+
+
+def desktop_checks_default() -> bool:
+    """App bundles and native app caches exist only on macOS hosts."""
+    return sys.platform == "darwin"
 
 
 def check_apps(applications: Path = Path("/Applications")) -> list[Result]:
@@ -351,17 +357,29 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--repo-root", type=Path, default=Path.cwd())
     parser.add_argument("--applications", type=Path, default=Path("/Applications"))
     parser.add_argument("--agy-settings", type=Path, default=DEFAULT_AGY_SETTINGS)
-    args = parser.parse_args(argv)
-    root = args.repo_root.resolve()
-    results = (
-        check_apps(args.applications) + check_team_configs(root)
-        + check_team_handshakes(root) + check_native_discovery(root)
-        + [check_agy_permission(args.agy_settings)]
+    parser.add_argument(
+        "--desktop", action=argparse.BooleanOptionalAction, default=None,
+        help="also check app bundles, native discovery, and the AGY permission "
+             "(default: only on macOS)",
     )
+    args = parser.parse_args(argv)
+    desktop = desktop_checks_default() if args.desktop is None else args.desktop
+    root = args.repo_root.resolve()
+    results = check_team_configs(root) + check_team_handshakes(root)
+    if desktop:
+        results = (
+            check_apps(args.applications) + results + check_native_discovery(root)
+            + [check_agy_permission(args.agy_settings)]
+        )
     for result in results:
         print(f"{'PASS' if result.ok else 'FAIL'} {result.harness}: {result.detail}")
         if result.remedy:
             print(f"  remedy: {result.remedy}")
+    if not desktop:
+        print(
+            "SKIP desktop: app bundle, native discovery, and AGY permission checks "
+            "run on macOS by default or with --desktop"
+        )
     return 0 if all(result.ok for result in results) else 1
 
 

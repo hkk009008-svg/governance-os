@@ -86,7 +86,8 @@ def test_stdio_status_compaction_and_own_message_readback(team_repo: Path) -> No
     codex = McpProcess(team_repo, "codex")
     try:
         schema = codex.request("tools/list")["tools"][0]["inputSchema"]
-        assert set(schema["properties"]) == {"message_id"}
+        assert set(schema["properties"]) == {"message_id", "sent_limit", "focus", "handoff"}
+        assert schema["properties"]["sent_limit"]["default"] == team.STATUS_SENT_DEFAULT
         assert {key: schema["properties"]["message_id"][key] for key in (
             "type", "minimum", "maximum"
         )} == {
@@ -105,11 +106,19 @@ def test_stdio_status_compaction_and_own_message_readback(team_repo: Path) -> No
         full = codex.tool("team_status", {"message_id": queued["id"]})
         assert full["sent"][0]["body"] == body
         assert full["sent"][0]["grants_authority"] is False
-        assert full["identity_assurance"] == team.IDENTITY_ASSURANCE
+        assert "identity_assurance" not in full
+        assert len(codex.tool("team_status", {"sent_limit": 1})["sent"]) == 1
         inbound = team.Team(team_repo, "claude").send("codex", "unread", idempotency_key="inbound")
+        assert codex.tool("team_status")["next_unread_id"] == inbound["id"]
+        noted = codex.tool(
+            "team_status", {"focus": "reviewing chain-1", "handoff": "NEXT: reply"}
+        )
+        assert next(m for m in noted["members"] if m["name"] == "codex")["focus"] == "reviewing chain-1"
+        assert noted["handoff"] == "NEXT: reply"
         for arguments in (
             {"message_id": inbound["id"]}, {"message_id": True},
-            {"message_id": None},
+            {"message_id": None}, {"sent_limit": None}, {"sent_limit": 0},
+            {"focus": None}, {"focus": 5}, {"handoff": ["x"]},
             {"message_id": queued["id"], "member": "claude"},
         ):
             rejected = codex.request("tools/call", {"name": "team_status", "arguments": arguments})

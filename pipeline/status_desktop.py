@@ -18,24 +18,33 @@ def _readiness_rows(results: list) -> dict[str, dict]:
     }
 
 
-def collect_desktop_readiness(repo_root: Path) -> dict:
-    """Inspect installed apps/configs without running an MCP handshake."""
+def collect_desktop_readiness(repo_root: Path, *, desktop: bool | None = None) -> dict:
+    """Inspect project configs, and app bundles where they can exist.
+
+    App bundle checks run only on macOS unless ``desktop`` forces them; other
+    hosts report the bindings truthfully instead of three phantom failures.
+    """
 
     try:
         import harness_preflight  # type: ignore
 
-        apps = _readiness_rows(harness_preflight.check_apps())
+        if desktop is None:
+            desktop = harness_preflight.desktop_checks_default()
+        apps = _readiness_rows(harness_preflight.check_apps()) if desktop else {}
         manifests = _readiness_rows(harness_preflight.check_team_configs(repo_root))
     except Exception as exc:
         return {
             "state": "unavailable",
             "ready": None,
             "apps": {},
+            "apps_checked": bool(desktop),
             "manifests": {},
             "detail": str(exc),
             "live_handshake": "not-run",
         }
-    complete = set(apps) == set(TEAM_MEMBERS) and set(manifests) == set(TEAM_MEMBERS)
+    complete = set(manifests) == set(TEAM_MEMBERS) and (
+        not desktop or set(apps) == set(TEAM_MEMBERS)
+    )
     ready = complete and all(
         row["ready"] for row in (*apps.values(), *manifests.values())
     )
@@ -43,9 +52,11 @@ def collect_desktop_readiness(repo_root: Path) -> dict:
         "state": "ready" if ready else "needs-attention",
         "ready": ready,
         "apps": apps,
+        "apps_checked": desktop,
         "manifests": manifests,
         "detail": (
-            "static app and project-config checks passed"
+            ("static app and project-config checks passed" if desktop
+             else "project-config checks passed; app bundles not checked on this platform")
             if ready
             else "one or more app/config checks failed"
         ),
@@ -60,7 +71,7 @@ def _readiness_labels(rows: dict) -> str:
     )
 
 
-def render_orientation_snapshot(snapshot: dict) -> str:
+def render_orientation_snapshot(snapshot: dict, *, verbose: bool = False) -> str:
     """Render compact readiness plus every pending formal request."""
 
     git = snapshot["git"]
@@ -73,7 +84,10 @@ def render_orientation_snapshot(snapshot: dict) -> str:
     if desktop["state"] == "unavailable":
         lines.append(f"Desktop readiness: unavailable ({desktop['detail']})")
     else:
-        lines.append(f"Apps: {_readiness_labels(desktop['apps'])}")
+        if desktop.get("apps_checked", bool(desktop.get("apps"))):
+            lines.append(f"Apps: {_readiness_labels(desktop['apps'])}")
+        else:
+            lines.append("Apps: not checked on this platform (bin/pipeline preflight --desktop)")
         lines.append(f"App configs: {_readiness_labels(desktop['manifests'])}")
         failed = [
             row
@@ -100,6 +114,10 @@ def render_orientation_snapshot(snapshot: dict) -> str:
                 f"reply-messages={transport['reply_messages']}",
             ]
         )
+        for member in TEAM_MEMBERS:
+            focus = transport.get("members", {}).get(member, {}).get("focus")
+            if focus:
+                lines.append(f"  {member} focus: {focus}")
     elif transport["state"] == "absent":
         lines.append("Team transport: not initialized (status did not create it)")
     else:
@@ -129,12 +147,20 @@ def render_orientation_snapshot(snapshot: dict) -> str:
                 f"  Pending: {request['path']}@{commit} reviewer={request['reviewer']}"
             )
         gate = review["gate"]
-        lines.append(
+        health = (
             f"Mailbox health: {gate['status']} ({gate['fatal']} fatal, "
             f"{gate['advisory']} advisory, "
             f"{gate.get('failed_review', 0)} failed)"
         )
-        if historical := review.get("historical_failed_reviews"):
-            lines.append(f"Historical unresolved FAILs: {len(historical)} (details: status --json)")
+        historical = review.get("historical_failed_reviews") or []
+        if historical and not verbose:
+            health += "; details: status --verbose"
+        lines.append(health)
+        if verbose:
+            for item in historical:
+                lines.append(
+                    f"  Historical FAIL: {item['report_path']}@{item['report_commit']} "
+                    f"for {item['request_path']}@{item['request_commit']}"
+                )
         lines.append("Integration admission: not run (use check admission --base <sha> --head <sha>)")
     return "\n".join(lines) + "\n"

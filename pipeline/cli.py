@@ -16,11 +16,15 @@ for path in (str(ROOT), str(ROOT / "pipeline")):
 
 COMMANDS: dict[tuple[str, ...], tuple[str, str, str]] = {
     ("status",): ("status", "main", "current apps, transport, Git, and review state"),
+    ("orient",): ("orient", "main", "one compact task-start digest"),
     ("check",): ("governance_verify_all", "main", "proportionate repository checks"),
     ("check", "coordination"): ("check_coordination", "main", "current formal-review state"),
     ("check", "admission"): ("ci_admission_gate", "main", "authority-range admission"),
     ("review", "request"): ("compact_pair_loop", "review_request_main", "compose a request body"),
     ("review", "validate"): ("compact_pair_loop", "review_validate_main", "validate a candidate artifact"),
+    ("review", "publish"): ("review_flow", "publish_main", "compose, publish, and commit a request"),
+    ("review", "accept"): ("review_flow", "accept_main", "publish and commit a bound report"),
+    ("review", "land-check"): ("review_flow", "land_check_main", "check a reviewed chain can land"),
     ("mail", "send"): ("mailbox_writer", "send_main", "publish a formal artifact"),
     ("team",): ("team", "main", "desktop-app team transport"),
     ("preflight",): ("harness_preflight", "main", "desktop-app integration checks"),

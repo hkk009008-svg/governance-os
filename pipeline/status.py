@@ -4,8 +4,13 @@
 from __future__ import annotations
 
 import argparse
+import dataclasses
+import hashlib
 import json
+import os
+import stat
 import sys
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -19,6 +24,13 @@ from status_desktop import (  # noqa: E402
     render_orientation_snapshot as _render_desktop_orientation_snapshot,
 )
 from status_team_store import collect_team_transport  # noqa: E402
+
+# The dashboard remembers one validated review state per exact repository
+# fingerprint. `check` and the admission gate never read it; they re-prove
+# every artifact from Git on every run.
+REVIEW_STATE_CACHE_NAME = "pipeline-status-cache.json"
+_CACHE_LIMIT_BYTES = 1_048_576
+
 
 def _run_git(repo_root: Path, args: list[str], timeout: int = 5) -> str:
     """Run a git command; return stdout stripped or raise."""
@@ -55,6 +67,161 @@ def collect_git(repo_root: Path) -> dict:
     }
 
 
+def _cache_enabled() -> bool:
+    """Opt-out switch for the dashboard cache (tests and probes set it to 0)."""
+    return os.environ.get("PIPELINE_STATUS_CACHE", "1") != "0"
+
+
+def _entry_digest(entry: os.DirEntry, info: os.stat_result) -> str:
+    """SHA-256 of a regular mailbox entry's bytes; symlinks and others get a marker."""
+    if not stat.S_ISREG(info.st_mode):
+        return "not-a-regular-file"
+    descriptor = os.open(
+        entry.path,
+        os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0),
+    )
+    try:
+        handle = os.fdopen(descriptor, "rb")
+    except OSError:
+        os.close(descriptor)
+        raise
+    with handle:
+        return hashlib.file_digest(handle, "sha256").hexdigest()
+
+
+def _review_state_key(repo_root: Path) -> tuple[Path, str] | None:
+    """Fingerprint everything the review state depends on, or None if unknown.
+
+    HEAD, the committed mailbox tree, every worktree mailbox entry (inode,
+    size, mtime, mode, and a digest of its bytes), and the validator modules'
+    bytes all enter the key, so a new commit, a tampered artifact, or a code
+    change is a miss, never a stale hit. The digest matters: a same-length
+    rewrite with its timestamp restored leaves every stat field unchanged.
+    """
+    import check_coordination  # type: ignore
+    import compact_pair_loop  # type: ignore
+
+    try:
+        head = _run_git(repo_root, ["rev-parse", "--verify", "HEAD^{commit}"])
+        common = _run_git(
+            repo_root, ["rev-parse", "--path-format=absolute", "--git-common-dir"]
+        )
+        tree = _run_git(
+            repo_root, ["ls-tree", "-r", "HEAD", "--", "coordination/mailbox/sent"]
+        )
+        parts = [head, tree]
+        sent = repo_root / "coordination/mailbox/sent"
+        try:
+            with os.scandir(sent) as entries:
+                for entry in sorted(entries, key=lambda item: item.name):
+                    info = entry.stat(follow_symlinks=False)
+                    parts.append(
+                        f"{entry.name}:{info.st_mode}:{info.st_ino}:"
+                        f"{info.st_size}:{info.st_mtime_ns}:{_entry_digest(entry, info)}"
+                    )
+        except FileNotFoundError:
+            parts.append("worktree-mailbox-absent")
+        for module in (check_coordination, compact_pair_loop):
+            parts.append(hashlib.sha256(Path(module.__file__).read_bytes()).hexdigest())
+    except Exception:
+        return None
+    key = hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()
+    return Path(common) / REVIEW_STATE_CACHE_NAME, key
+
+
+def _state_from_json(data: dict):
+    import check_coordination  # type: ignore
+
+    return check_coordination.VerifyReviewState(
+        pending=tuple(
+            check_coordination.CurrentVerifyRequest(**item) for item in data["pending"]
+        ),
+        failed=tuple(
+            check_coordination.FailedVerifyRequest(**item) for item in data["failed"]
+        ),
+        problem=data["problem"],
+        historical_failed=tuple(
+            check_coordination.FailedVerifyRequest(**item)
+            for item in data["historical_failed"]
+        ),
+    )
+
+
+def _read_cached_state(path: Path, key: str):
+    """Return the cached state for ``key`` or None; never raise."""
+    try:
+        descriptor = os.open(
+            path,
+            os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0),
+        )
+    except OSError:
+        return None
+    try:
+        info = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(info.st_mode)
+            or info.st_uid != os.geteuid()
+            or stat.S_IMODE(info.st_mode) & 0o077
+            or info.st_size > _CACHE_LIMIT_BYTES
+        ):
+            return None
+        raw = os.read(descriptor, info.st_size)
+    except OSError:
+        return None
+    finally:
+        os.close(descriptor)
+    try:
+        payload = json.loads(raw.decode("utf-8"))
+        if not isinstance(payload, dict) or payload.get("key") != key:
+            return None
+        return _state_from_json(payload["state"])
+    except (KeyError, TypeError, ValueError, UnicodeDecodeError):
+        return None
+
+
+def _write_cached_state(path: Path, key: str, state) -> None:
+    """Replace the cache atomically with owner-only permissions; never raise."""
+    payload = json.dumps(
+        {"key": key, "state": dataclasses.asdict(state)}, sort_keys=True
+    ).encode("utf-8")
+    try:
+        descriptor, temporary = tempfile.mkstemp(
+            prefix=".status-cache-", dir=path.parent
+        )
+    except OSError:
+        return
+    try:
+        os.fchmod(descriptor, 0o600)
+        view = memoryview(payload)
+        while view:
+            view = view[os.write(descriptor, view):]
+        os.close(descriptor)
+        descriptor = -1
+        os.replace(temporary, path)
+    except OSError:
+        if descriptor != -1:
+            os.close(descriptor)
+        try:
+            os.unlink(temporary)
+        except OSError:
+            pass
+
+
+def _review_state(repo_root: Path):
+    """Current formal-review state, from the fingerprint cache when it matches."""
+    import check_coordination  # type: ignore
+
+    located = _review_state_key(repo_root) if _cache_enabled() else None
+    if located is not None:
+        cached = _read_cached_state(*located)
+        if cached is not None:
+            return cached
+    state = check_coordination.inspect_verify_review_state(repo_root)
+    if located is not None:
+        _write_cached_state(*located, state)
+    return state
+
+
 def _collect_review_state(repo_root: Path) -> dict:
     """Collect current formal-review state independently of routine dialogue."""
 
@@ -62,7 +229,7 @@ def _collect_review_state(repo_root: Path) -> dict:
     # recursive at import time.
     import check_coordination  # type: ignore
 
-    review_state = check_coordination.inspect_verify_review_state(repo_root)
+    review_state = _review_state(repo_root)
     requests = list(review_state.pending)
     failed_reviews = list(review_state.failed)
     current = max(requests, key=lambda request: request.path, default=None)
@@ -175,9 +342,9 @@ def collect_orientation_snapshot(repo_root: Path) -> dict:
     }
 
 
-def render_orientation_snapshot(snapshot: dict) -> str:
+def render_orientation_snapshot(snapshot: dict, *, verbose: bool = False) -> str:
     """Render the live desktop-team snapshot."""
-    return _render_desktop_orientation_snapshot(snapshot)
+    return _render_desktop_orientation_snapshot(snapshot, verbose=verbose)
 
 
 def main(argv: Optional[list[str]] = None) -> int:
@@ -189,12 +356,17 @@ def main(argv: Optional[list[str]] = None) -> int:
         action="store_true",
         help="Emit the desktop-team snapshot as JSON.",
     )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Also list historical unresolved FAIL reports.",
+    )
     args = parser.parse_args(argv)
     snapshot = collect_orientation_snapshot(_REPO_ROOT)
     if args.json:
         print(json.dumps(snapshot, sort_keys=True))
     else:
-        print(render_orientation_snapshot(snapshot), end="")
+        print(render_orientation_snapshot(snapshot, verbose=args.verbose), end="")
     return 0
 
 

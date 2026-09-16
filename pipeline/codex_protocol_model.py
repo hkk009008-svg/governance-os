@@ -86,6 +86,26 @@ def load_model_families(
     return prefixes, families, aliases
 
 
+def load_family_prefixes(config_path: Path = MODEL_FAMILIES_CONFIG) -> dict[str, str]:
+    """Name prefixes that admit an unregistered point release as an author."""
+    payload = _load_config(config_path)
+    prefixes = payload.get("provider_prefixes")
+    value = payload.get("family_prefixes")
+    if not isinstance(prefixes, dict) or not isinstance(value, dict) or not value:
+        raise RuntimeError("model-families [family_prefixes] must be a nonempty table")
+    known = set(prefixes.values())
+    for prefix, family in value.items():
+        if (
+            not isinstance(prefix, str) or len(prefix) < 2 or not prefix.endswith("-")
+            or prefix != prefix.casefold() or family not in known
+        ):
+            raise RuntimeError(
+                "model-families [family_prefixes] entries must map a lowercase "
+                "'<name>-' prefix to a known family"
+            )
+    return dict(value)
+
+
 def load_review_admission(
     config_path: Path = MODEL_FAMILIES_CONFIG,
 ) -> tuple[frozenset[str], frozenset[str], frozenset[str]]:
@@ -124,12 +144,19 @@ def load_review_admission(
 MODEL_PROVIDER_FAMILIES, MODEL_ID_REGISTRY, MODEL_DISPLAY_ALIASES = (
     load_model_families()
 )
+MODEL_FAMILY_PREFIXES = load_family_prefixes()
 CURRENT_REVIEW_FAMILIES, CURRENT_AUTHOR_MODEL_IDS, CURRENT_REVIEWER_MODEL_IDS = (
     load_review_admission()
 )
+# Families that have at least one active author; an unregistered point release
+# of one of them may author. Reviewers are always exact IDs.
+CURRENT_AUTHOR_FAMILIES = frozenset(
+    MODEL_ID_REGISTRY[model] for model in CURRENT_AUTHOR_MODEL_IDS
+)
 
 
-def _model_record(model_id: str) -> tuple[str, str] | None:
+def _normalize(model_id: str) -> tuple[str, str | None] | None:
+    """Return (token, provider family or None) after alias and prefix stripping."""
     if not model_id or model_id != model_id.strip():
         return None
     token = MODEL_DISPLAY_ALIASES.get(model_id, model_id.casefold())
@@ -147,15 +174,48 @@ def _model_record(model_id: str) -> tuple[str, str] | None:
             provider_family = family
             token = token[len(prefix) :]
             break
+    return token, provider_family
+
+
+def _model_record(model_id: str) -> tuple[str, str] | None:
+    """Exact registry record, or None for unknown, malformed, or conflicting IDs."""
+    normalized = _normalize(model_id)
+    if normalized is None:
+        return None
+    token, provider_family = normalized
     family = MODEL_ID_REGISTRY.get(token)
     if family is None or (provider_family is not None and provider_family != family):
         return None
     return token, family
 
 
+def _prefix_family(model_id: str) -> str | None:
+    """Family of an unregistered ID by name prefix; None when registered or unknown.
+
+    Registered tokens are refused here as well as by the exact-record check
+    in the callers, so a retired registry entry stays retired even if one of
+    the two guards were bypassed. Author admission is the only consumer that
+    grants anything, and an author grants nothing: repository bytes could
+    always name any admitted ID, so exact author matching only ever caught
+    typos and new releases.
+    """
+    normalized = _normalize(model_id)
+    if normalized is None:
+        return None
+    token, provider_family = normalized
+    if token in MODEL_ID_REGISTRY:
+        return None
+    for prefix, family in MODEL_FAMILY_PREFIXES.items():
+        if token.startswith(prefix) and len(token) > len(prefix):
+            if provider_family is not None and provider_family != family:
+                return None
+            return family
+    return None
+
+
 def model_family(model_id: str) -> str | None:
     record = _model_record(model_id)
-    return record[1] if record else None
+    return record[1] if record else _prefix_family(model_id)
 
 
 def model_family_matches_member(model_id: str, member: str) -> bool:
@@ -170,7 +230,9 @@ def models_are_independent(author_model: str, reviewer_model: str) -> bool:
 
 def model_is_current_author(model_id: str) -> bool:
     record = _model_record(model_id)
-    return bool(record and record[0] in CURRENT_AUTHOR_MODEL_IDS)
+    if record:
+        return record[0] in CURRENT_AUTHOR_MODEL_IDS
+    return _prefix_family(model_id) in CURRENT_AUTHOR_FAMILIES
 
 
 def model_is_current_reviewer(model_id: str) -> bool:
@@ -179,13 +241,13 @@ def model_is_current_reviewer(model_id: str) -> bool:
 
 
 def models_are_current_review_pair(author_model: str, reviewer_model: str) -> bool:
-    author = _model_record(author_model)
     reviewer = _model_record(reviewer_model)
+    author_family = model_family(author_model)
     return bool(
-        author
-        and reviewer
-        and author[0] in CURRENT_AUTHOR_MODEL_IDS
+        reviewer
+        and author_family is not None
+        and model_is_current_author(author_model)
         and reviewer[0] in CURRENT_REVIEWER_MODEL_IDS
         and reviewer[1] in CURRENT_REVIEW_FAMILIES
-        and author[1] != reviewer[1]
+        and author_family != reviewer[1]
     )

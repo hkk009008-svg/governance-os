@@ -17,7 +17,7 @@ permissions:
 jobs:
   admission-gate:
     name: risk-aware admission (authority surfaces; pull_request_target)
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - name: Checkout trusted base gate

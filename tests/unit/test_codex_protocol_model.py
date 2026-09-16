@@ -69,3 +69,39 @@ def test_configuration_loader_fails_closed(tmp_path: Path) -> None:
     bad.write_text("schema_version = 2\n", encoding="utf-8")
     with pytest.raises(RuntimeError):
         model.load_model_families(bad)
+
+
+def test_unregistered_point_release_may_author_but_never_review() -> None:
+    assert "claude-fable-5-2" not in model.MODEL_ID_REGISTRY
+    assert model.model_family("claude-fable-5-2") == "claude"
+    assert model.model_family_matches_member("claude-fable-5-2", "claude")
+    assert model.model_is_current_author("claude-fable-5-2")
+    assert not model.model_is_current_reviewer("claude-fable-5-2")
+    assert model.models_are_current_review_pair("claude-fable-5-2", "gpt-5.6-sol")
+    assert not model.models_are_current_review_pair("claude-fable-5-2", "claude-opus-5")
+    assert not model.models_are_current_review_pair("gpt-5.6-sol", "claude-fable-5-2")
+    assert model.model_is_current_author("gemini-9-pro-high")
+    assert model.model_is_current_author("codex-openai-gpt-7-nova")
+
+
+def test_prefix_admission_revives_nothing_and_admits_no_foreign_family() -> None:
+    assert not model.model_is_current_author("gemini-3.7-flash-high")  # registered, retired
+    assert not model.model_is_current_author("grok-5")  # family with no active author
+    assert not model.model_is_current_author("openai-claude-9")  # provider conflicts
+    assert model.model_family("openai-claude-9") is None
+    for bare in ("claude-", "gpt-", "claudette-1", "CLAUDE-FABLE-5-2 "):
+        assert not model.model_is_current_author(bare), bare
+
+
+def test_family_prefix_table_fails_closed(tmp_path: Path) -> None:
+    for body in (
+        'schema_version = 1\n[provider_prefixes]\n"anthropic-" = "claude"\n',
+        'schema_version = 1\n[provider_prefixes]\n"anthropic-" = "claude"\n'
+        '[family_prefixes]\n"claude-" = "mystery"\n',
+        'schema_version = 1\n[provider_prefixes]\n"anthropic-" = "claude"\n'
+        '[family_prefixes]\n"claude" = "claude"\n',
+    ):
+        bad = tmp_path / "models.toml"
+        bad.write_text(body, encoding="utf-8")
+        with pytest.raises(RuntimeError, match="family_prefixes"):
+            model.load_family_prefixes(bad)

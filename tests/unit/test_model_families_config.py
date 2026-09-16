@@ -32,3 +32,12 @@ def test_unadmitted_registered_models_do_not_gain_review_authority() -> None:
     assert model.model_family("grok-4.6") == "grok"
     assert not model.model_is_current_author("grok-4.6")
     assert not model.model_is_current_reviewer("grok-4.6")
+
+
+def test_family_prefixes_cover_the_registered_families_only() -> None:
+    assert model.MODEL_FAMILY_PREFIXES == {
+        "claude-": "claude", "gpt-": "gpt", "gemini-": "gemini", "grok-": "grok",
+    }
+    assert set(model.MODEL_FAMILY_PREFIXES.values()) == set(model.MODEL_PROVIDER_FAMILIES.values())
+    assert model.CURRENT_AUTHOR_FAMILIES == {"claude", "gpt", "gemini"}
+    assert model.model_is_current_reviewer("claude-fable-5-1")

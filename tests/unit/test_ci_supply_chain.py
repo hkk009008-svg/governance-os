@@ -35,6 +35,15 @@ def test_ci_produces_every_protected_context_without_advisory_greenwashing(
     assert "python -m pytest tests --tb=short -q" in workflow
 
 
+def test_ci_keeps_one_macos_job_and_runs_the_matrix_on_linux(repo_root) -> None:
+    workflow = _read(repo_root, "ci.yml")
+    assert workflow.count("runs-on: macos-latest") == 1
+    assert workflow.count("runs-on: ubuntu-latest") == 1
+    assert workflow.count("PIPELINE_REQUIRE_EXECUTED_TEST: '1'") == 2
+    assert "bin/pipeline preflight --no-desktop" in workflow
+    assert "runs-on: ubuntu-latest" in _read(repo_root, "admission.yml")
+
+
 def test_ci_installs_only_hash_locked_test_dependencies(repo_root) -> None:
     workflow = _read(repo_root, "ci.yml")
     assert "pip install --require-hashes -r requirements-dev.txt" in workflow

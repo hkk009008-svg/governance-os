@@ -3,19 +3,31 @@ from __future__ import annotations
 
 import json
 import re
+import sqlite3
 import time
 import uuid
 from pathlib import Path
 
 from team_store import (
-    CAPABILITIES, MAX_BODY_BYTES, MAX_IDEMPOTENCY_KEY_BYTES, MAX_READ_LIMIT,
-    MAX_MESSAGE_ID, MAX_WAIT_SECONDS, CURSOR_SEMANTICS, IDENTITY_ASSURANCE, MEMBERS,
-    RECIPIENTS, Store, TeamError, now,
+    CAPABILITIES, MAX_BODY_BYTES, MAX_FOCUS_BYTES, MAX_HANDOFF_BYTES,
+    MAX_IDEMPOTENCY_KEY_BYTES, MAX_READ_LIMIT, MAX_MESSAGE_ID, MAX_STATUS_SENT,
+    MAX_WAIT_SECONDS, MEMBERS, POLL_INTERVAL_SECONDS, RECIPIENTS,
+    STATUS_SENT_DEFAULT, Store, TeamError, now,
 )
 
 
 _KEY_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}\Z")
 _STATUS_PREVIEW_BYTES = 256
+_INBOUND_SQL = (
+    "SELECT id FROM messages WHERE id>? AND sender!=? "
+    "AND (recipient=? OR recipient='all') ORDER BY id LIMIT ?"
+)
+# Addressed to the member and not yet acknowledged; parameters are the member
+# name three times.
+_UNREAD_SQL = (
+    "FROM messages m WHERE m.sender!=? AND (m.recipient=? OR m.recipient='all') "
+    "AND NOT EXISTS (SELECT 1 FROM deliveries d WHERE d.message_id=m.id AND d.member=?)"
+)
 
 
 class Team:
@@ -120,6 +132,90 @@ class Team:
         if not 0 <= float(wait_seconds) <= MAX_WAIT_SECONDS:
             raise TeamError(f"wait_seconds must be between 0 and {MAX_WAIT_SECONDS:g}")
 
+    def _advance_frontier(self, connection: sqlite3.Connection, message_id: int) -> None:
+        connection.execute(
+            "INSERT INTO cursor_frontiers(member,message_id) VALUES(?,?) "
+            "ON CONFLICT(member) DO UPDATE SET message_id="
+            "MAX(cursor_frontiers.message_id,excluded.message_id)",
+            (self.member, message_id),
+        )
+
+    def _acknowledge(self, connection: sqlite3.Connection, after_id: int) -> None:
+        """Check ``after_id`` against the log, then record acknowledgement through it."""
+        high_water = connection.execute(
+            "SELECT COALESCE(MAX(id),0) FROM messages"
+        ).fetchone()[0]
+        if after_id > high_water:
+            raise TeamError("after_id is beyond the current message log")
+        frontier_row = connection.execute(
+            "SELECT message_id FROM cursor_frontiers WHERE member=?",
+            (self.member,),
+        ).fetchone()
+        frontier = frontier_row["message_id"] if frontier_row else 0
+        if after_id > frontier:
+            skipped = connection.execute(
+                f"SELECT m.id {_UNREAD_SQL} AND m.id>? AND m.id<=? ORDER BY m.id LIMIT 1",
+                (self.member, self.member, self.member, frontier, after_id),
+            ).fetchone()
+            if skipped is not None:
+                raise TeamError(
+                    "after_id would skip unread addressed messages; "
+                    "use next_cursor returned by team_wait"
+                )
+            self._advance_frontier(connection, after_id)
+        if after_id:
+            connection.execute(
+                "INSERT OR IGNORE INTO deliveries(message_id,member,delivered_at) "
+                "SELECT id,?,? FROM messages WHERE id<=? AND sender!=? "
+                "AND (recipient=? OR recipient='all')",
+                (self.member, now(), after_id, self.member, self.member),
+            )
+
+    def _deliverable(
+        self, connection: sqlite3.Connection, after_id: int, limit: int
+    ) -> list[dict]:
+        """Return the next inbound slice and record it as returned, not acknowledged."""
+        rows = list(connection.execute(
+            _INBOUND_SQL, (after_id, self.member, self.member, limit)
+        ))
+        if not rows:
+            return []
+        self._advance_frontier(connection, rows[-1]["id"])
+        return [self.store.message_view(connection, row["id"]) for row in rows]
+
+    def _poll(self, after_id: int, limit: int, deadline: float) -> list[dict]:
+        """Hold one read connection and wake only when another connection commits.
+
+        ``PRAGMA data_version`` changes exactly when a different connection
+        commits, so the store is reopened once on arrival instead of on every
+        tick. The baseline version is read before the first check, so a commit
+        that lands between the two is seen by the check or by the next tick.
+        """
+        reader = self.store.connect()
+        try:
+            version = reader.execute("PRAGMA data_version").fetchone()[0]
+            while (
+                reader.execute(
+                    _INBOUND_SQL, (after_id, self.member, self.member, 1)
+                ).fetchone() is None
+            ):
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return []
+                time.sleep(min(POLL_INTERVAL_SECONDS, remaining))
+                observed = reader.execute("PRAGMA data_version").fetchone()[0]
+                while observed == version:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        return []
+                    time.sleep(min(POLL_INTERVAL_SECONDS, remaining))
+                    observed = reader.execute("PRAGMA data_version").fetchone()[0]
+                version = observed
+        finally:
+            reader.close()
+        with self.store.session() as connection:
+            return self._deliverable(connection, after_id, limit)
+
     def wait(
         self, *, after_id: int = 0, limit: int = 50, wait_seconds: float = 0
     ) -> dict:
@@ -132,91 +228,61 @@ class Team:
 
         self._validate_read(after_id, limit, wait_seconds)
         deadline = time.monotonic() + float(wait_seconds)
-        first_read = True
-        while True:
-            with self.store.session() as connection:
-                if first_read:
-                    high_water = connection.execute(
-                        "SELECT COALESCE(MAX(id),0) FROM messages"
-                    ).fetchone()[0]
-                    if after_id > high_water:
-                        raise TeamError("after_id is beyond the current message log")
-                    frontier_row = connection.execute(
-                        "SELECT message_id FROM cursor_frontiers WHERE member=?",
-                        (self.member,),
-                    ).fetchone()
-                    frontier = frontier_row["message_id"] if frontier_row else 0
-                    if after_id > frontier:
-                        skipped = connection.execute(
-                            "SELECT id FROM messages m WHERE m.id>? AND m.id<=? "
-                            "AND m.sender!=? AND (m.recipient=? OR m.recipient='all') "
-                            "AND NOT EXISTS (SELECT 1 FROM deliveries d "
-                            "WHERE d.message_id=m.id AND d.member=?) "
-                            "ORDER BY m.id LIMIT 1",
-                            (frontier, after_id, self.member, self.member, self.member),
-                        ).fetchone()
-                        if skipped is not None:
-                            raise TeamError(
-                                "after_id would skip unread addressed messages; "
-                                "use next_cursor returned by team_wait"
-                            )
-                        connection.execute(
-                            "INSERT INTO cursor_frontiers(member,message_id) VALUES(?,?) "
-                            "ON CONFLICT(member) DO UPDATE SET message_id="
-                            "MAX(cursor_frontiers.message_id,excluded.message_id)",
-                            (self.member, after_id),
-                        )
-                    if after_id:
-                        connection.execute(
-                            "INSERT OR IGNORE INTO deliveries(message_id,member,delivered_at) "
-                            "SELECT id,?,? FROM messages WHERE id<=? AND sender!=? "
-                            "AND (recipient=? OR recipient='all')",
-                            (self.member, now(), after_id, self.member, self.member),
-                        )
-                rows = list(connection.execute(
-                    "SELECT id FROM messages WHERE id>? AND sender!=? "
-                    "AND (recipient=? OR recipient='all') ORDER BY id LIMIT ?",
-                    (after_id, self.member, self.member, limit),
-                ))
-                if rows:
-                    connection.execute(
-                        "INSERT INTO cursor_frontiers(member,message_id) VALUES(?,?) "
-                        "ON CONFLICT(member) DO UPDATE SET message_id="
-                        "MAX(cursor_frontiers.message_id,excluded.message_id)",
-                        (self.member, rows[-1]["id"]),
-                    )
-                    messages = [
-                        self.store.message_view(connection, row["id"]) for row in rows
-                    ]
-                    break
-            first_read = False
-            if time.monotonic() >= deadline:
-                messages = []
-                break
-            time.sleep(min(0.05, max(0.0, deadline - time.monotonic())))
+        with self.store.session() as connection:
+            self._acknowledge(connection, after_id)
+            messages = self._deliverable(connection, after_id, limit)
+        if not messages and float(wait_seconds) > 0:
+            messages = self._poll(after_id, limit, deadline)
         self._touch()
         return {
             "member": self.member,
             "messages": messages,
             "acknowledged_through": after_id,
             "next_cursor": messages[-1]["id"] if messages else after_id,
-            "cursor_semantics": CURSOR_SEMANTICS,
-            "identity_assurance": IDENTITY_ASSURANCE,
             "grants_authority": False,
         }
 
-    def status(self, *, message_id: int | None = None) -> dict:
+    @staticmethod
+    def _validate_note(value: object, label: str, limit: int, *, one_line: bool) -> str | None:
+        if value is None:
+            return None
+        if not isinstance(value, str) or "\x00" in value:
+            raise TeamError(f"{label} must be UTF-8 text without NUL bytes")
+        if one_line and ("\n" in value or "\r" in value):
+            raise TeamError(f"{label} must be one line")
+        if len(value.encode("utf-8")) > limit:
+            raise TeamError(f"{label} exceeds {limit} UTF-8 bytes")
+        return value.strip()
+
+    def status(
+        self, *, message_id: int | None = None, sent_limit: int | None = None,
+        focus: str | None = None, handoff: str | None = None,
+    ) -> dict:
         """Return recent sent previews, or one own sent message in full.
 
         Read-back does not advance an inbound cursor or acknowledge messages.
         Activity and pending counts are never a liveness or authority claim.
+        ``resume_cursor`` is the ``after_id`` that makes ``wait`` return exactly
+        the caller's unacknowledged messages, or wait for new ones when there
+        are none. ``focus`` (one line, visible to every member) and ``handoff``
+        (read back by this member's next session) are self-declared notes; an
+        empty string clears one and None leaves it unchanged.
         """
         if message_id is not None and (
             isinstance(message_id, bool) or not isinstance(message_id, int)
             or not 1 <= message_id <= MAX_MESSAGE_ID
         ):
             raise TeamError(f"message_id must be an integer from 1 to {MAX_MESSAGE_ID}")
-        self._touch()
+        if sent_limit is None:
+            sent_limit = STATUS_SENT_DEFAULT
+        elif (
+            isinstance(sent_limit, bool) or not isinstance(sent_limit, int)
+            or not 1 <= sent_limit <= MAX_STATUS_SENT
+        ):
+            raise TeamError(f"sent_limit must be an integer from 1 to {MAX_STATUS_SENT}")
+        focus = self._validate_note(focus, "focus", MAX_FOCUS_BYTES, one_line=True)
+        handoff = self._validate_note(handoff, "handoff", MAX_HANDOFF_BYTES, one_line=False)
+        self.store.touch(self.member, self.instance_id, focus=focus, handoff=handoff)
         with self.store.session() as connection:
             if message_id is not None and connection.execute(
                 "SELECT id FROM messages WHERE id=? AND sender=?",
@@ -224,28 +290,33 @@ class Team:
             ).fetchone() is None:
                 raise TeamError("message_id is not a message sent by this member")
             observed = {row["name"]: row for row in connection.execute(
-                "SELECT name,capabilities,last_seen FROM members"
+                "SELECT name,capabilities,last_seen,focus,handoff FROM members"
             )}
             members = []
             for name in MEMBERS:
                 row = observed.get(name)
                 pending = connection.execute(
-                    "SELECT count(*) AS n FROM messages m WHERE m.sender!=? "
-                    "AND (m.recipient=? OR m.recipient='all') AND NOT EXISTS "
-                    "(SELECT 1 FROM deliveries d WHERE d.message_id=m.id AND d.member=?)",
-                    (name, name, name),
+                    f"SELECT count(*) AS n {_UNREAD_SQL}", (name, name, name)
                 ).fetchone()["n"]
                 members.append({
                     "name": name, "last_seen": row["last_seen"] if row else None,
                     "capabilities": json.loads(row["capabilities"]) if row else list(CAPABILITIES[name]),
                     "pending": pending,
+                    "focus": row["focus"] if row else "",
                 })
+            next_unread = connection.execute(
+                f"SELECT MIN(m.id) AS id {_UNREAD_SQL}",
+                (self.member, self.member, self.member),
+            ).fetchone()["id"]
+            high_water = connection.execute(
+                "SELECT COALESCE(MAX(id),0) FROM messages"
+            ).fetchone()[0]
             if message_id is not None:
                 ids = [message_id]
             else:
                 ids = [row["id"] for row in connection.execute(
-                    "SELECT id FROM messages WHERE sender=? ORDER BY id DESC LIMIT 50",
-                    (self.member,),
+                    "SELECT id FROM messages WHERE sender=? ORDER BY id DESC LIMIT ?",
+                    (self.member, sent_limit),
                 )][::-1]
             sent = [self.store.message_view(connection, item_id) for item_id in ids]
             if message_id is None:
@@ -258,12 +329,14 @@ class Team:
                         body_bytes=len(body),
                         body_truncated=len(body) > _STATUS_PREVIEW_BYTES,
                     )
+        own = observed.get(self.member)
         return {
-            "member": self.member, "members": members, "sent": sent,
+            "member": self.member, "members": members,
+            "next_unread_id": next_unread,
+            "resume_cursor": high_water if next_unread is None else next_unread - 1,
+            "handoff": own["handoff"] if own else "",
+            "sent": sent,
             "store": str(self.store_path),
-            "liveness": "last_seen is activity evidence only; it does not prove an app is open",
-            "identity_assurance": IDENTITY_ASSURANCE,
-            "cursor_semantics": CURSOR_SEMANTICS,
             "grants_authority": False,
         }
 

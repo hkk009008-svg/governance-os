@@ -1,16 +1,8 @@
 from __future__ import annotations
 
-import subprocess
 from pathlib import Path
 
-
-def git(root: Path, *arguments: str) -> str:
-    result = subprocess.run(
-        ["git", *arguments], cwd=root, capture_output=True, text=True, check=False
-    )
-    if result.returncode:
-        raise RuntimeError(result.stderr or result.stdout)
-    return result.stdout.strip()
+from team_test_support import git
 
 
 def init_repo(root: Path) -> str:

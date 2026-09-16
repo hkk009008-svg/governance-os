@@ -2,99 +2,69 @@
 
 ## Orient
 
-1. Read the current user request and repository instructions.
-2. Inspect the branch, `git status --short`, relevant diff, and recent commits.
-3. Call `team_status` once and read addressed messages with `team_wait`.
+1. Read the user request and repository instructions.
+2. `bin/pipeline orient --member <label>` prints Git, bindings, transport
+   with every member's focus, your resume cursor and handoff, review state,
+   and the newest artifacts in one digest. `status` shows the same without a
+   member view; `--verbose` adds historical unresolved FAILs; `--json` is
+   machine-readable.
+3. Call `team_status` once and read addressed messages with `team_wait` from
+   its `resume_cursor`. Set your `focus` now and your `handoff` before you
+   stop; both are observational.
 4. Start the scoped work directly.
-
-Use `team_send` for a bounded question, finding, result, or handoff. Queue
-success is not acknowledgement; acknowledgement is not understanding; a reply
-must be read to determine whether it is useful.
 
 ## Verify
 
 ```bash
-bin/pipeline --help
-bin/pipeline preflight
-bin/pipeline status
 bin/pipeline check --fast
 bin/pipeline check
+bin/pipeline preflight
 ```
 
-`check --fast` validates the live harness state. `check` also runs the full test
-suite. Use focused tests during implementation and one proportionate final pass.
-Investigate unexpected failures before changing behavior. A green check proves
-only the paths it executed.
-
-`check` requires an executed, non-skipped test and ignores inherited
-`PYTEST_ADDOPTS` and `PYTEST_PLUGINS` overrides. For custom selections/options,
-run pytest directly with the primary checkout's `.venv/bin/python`.
-This is a fixed full-suite command, not a sandbox for installed Python plugins.
-`status` lists every pending request; `status --json` includes their exact ranges.
+`check --fast` validates bindings, review policy, and mailbox health; `check`
+also runs the full suite and requires at least one executed test, ignoring
+inherited `PYTEST_ADDOPTS` and `PYTEST_PLUGINS`. A green check proves only
+the paths it executed.
+`preflight` exits nonzero until every checked binding and handshake passes;
+app bundle and native discovery checks run on macOS by default and anywhere
+with `--desktop`.
 
 ## Formal review
 
-For `material-behavior` or `high-risk-control`, commit the candidate and create
-an exact-range request:
+For `material-behavior` or `high-risk-control`, commit the candidate, then:
 
 ```bash
-bin/pipeline review request --help
-bin/pipeline mail send --help
-```
-
-The author sends `verify-request` to a non-author Codex or Claude member. The
-reviewer reproduces the evidence, inspects the actual diff, and sends one bound
-`verification-report`. High-risk review also requires different model families
-and a request-level abuse-class assessment.
-
-Publication is two separate commits: the request must be the only change
-directly after its reviewed head, and the report must be the only change
-directly after that request. The composer reads Outcome text from stdin and
-prints a body; it does not publish. Pass that body to `mail send`, then commit
-only the emitted path with an explicit pathspec. Use the actual running model,
-not an admitted label chosen to make validation pass. Revisions after review
-need their own exact-range coverage.
-
-Validate a draft before publication with:
-
-```bash
-bin/pipeline review validate --help
-```
-
-Admission for an explicit range is checked with:
-
-```bash
+bin/pipeline review publish --help
+bin/pipeline review accept --help
+bin/pipeline review land-check --help
 bin/pipeline check admission --base <full-sha> --head <full-sha>
 ```
 
-Do not write ordinary team conversation to the mailbox. Published formal
-artifacts are append-only: retain requests and reports in
-`coordination/mailbox/sent/` and retire verdicts through valid `Supersedes`
-reports, not deletion, renaming, or rewriting. This includes mailbox-only
-commits and changes later reverted inside the integration range.
+At the reviewed head the author runs `review publish`: it composes the
+`verify-request` (Outcome from `--outcome-file` or stdin), validates it,
+publishes it through the fixed writer, and commits only that artifact
+directly after the head, refusing at any other HEAD. The non-author reviewer
+checks out the request commit, reproduces the evidence, inspects the diff,
+and runs `review accept` with the verdict, findings, and evidence; it
+publishes and commits the bound `verification-report` directly after the
+request. Use the actual running model. Revisions after review need their own
+pair. `review land-check` confirms the chain admits and can land byte-clean;
+land it as a fast-forward or merge commit, never a squash. `review request`,
+`review validate`, and `mail send` remain the underlying steps.
 
-`status` and `check` describe mailbox health, not integration admission.
-Historical FAILs with previously pruned requests remain visible as advisories;
-they are not a blanket veto on unrelated work. Admission applies to the explicit
-base/head range. A same-request GO does not retire an unsuperseded FAIL.
-
-Local `check admission --base/--head` selects history, not the validator version:
-it executes code in the current checkout. The required PR workflow instead runs
-the gate from the trusted base against candidate Git objects, without executing
-candidate code. Land prerequisite gate changes before changes that rely on them.
-Direct-push CI is not a substitute for that PR admission check.
+`status` and `check` describe mailbox health. `check admission` evaluates an
+explicit range with the code in the current checkout; the PR workflow runs the
+gate from the trusted base without executing candidate code, so land
+prerequisite gate changes before changes that rely on them. A historical FAIL
+whose request is gone is an advisory, not a veto.
 
 ## Troubleshoot
 
 - Missing team tool: reopen the repository in the app and run `preflight`.
 - AGY not connected: refresh the workspace `pipeline-team` plugin and approve
-  the exact `mcp(pipeline-team/*)` permission if desired.
-- Queued but unacknowledged: continue independent work or wait at a natural
-  boundary; do not infer assent.
-- Store security refusal: inspect the Git common directory's `pipeline-team`
-  entry and restore owner-only, non-symlinked state.
-- Formal artifact refusal: run `review validate` and fix the reported binding,
-  range, identity, or evidence error.
-
-Push, merge, release, spend, destructive actions, and live-data mutation are
-performed only with exact current user authorization.
+  the exact `mcp(pipeline-team/*)` permission.
+- Queued but unacknowledged: continue independent work; do not infer assent.
+- Store refusal: restore owner-only, non-symlinked state under the Git common
+  directory's `pipeline-team` entry.
+- Artifact refusal: run `review validate` and fix the reported binding, range,
+  identity, or evidence error.

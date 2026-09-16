@@ -8,8 +8,9 @@ from typing import Any
 
 from team_messages import Team
 from team_store import (
-    MAX_BODY_BYTES, MAX_MESSAGE_ID, MAX_READ_LIMIT, MAX_WAIT_SECONDS, RECIPIENTS,
-    TeamError,
+    MAX_BODY_BYTES, MAX_FOCUS_BYTES, MAX_HANDOFF_BYTES, MAX_MESSAGE_ID,
+    MAX_READ_LIMIT, MAX_STATUS_SENT, MAX_WAIT_SECONDS, RECIPIENTS,
+    STATUS_SENT_DEFAULT, TeamError,
 )
 
 
@@ -19,10 +20,16 @@ TOOLS = [
     {
         "name": "team_status",
         "description": (
-            "Show Codex, Claude, and AGY activity, capabilities, pending messages, "
-            "and recent sent-message previews with cursor-acknowledgement/reply state. "
-            "Pass message_id to read one own sent message in full, including older messages. "
-            "This does not acknowledge inbound messages. Activity is not liveness or authority."
+            "Show Codex, Claude, and AGY activity, one-line focus notes, pending "
+            "messages, the caller's resume_cursor (the after_id that makes team_wait "
+            "return exactly the unread messages), the caller's own handoff note, and "
+            "recent sent-message previews with cursor-acknowledgement/reply state "
+            "(10 by default, sent_limit up to 50). Pass focus (one line, seen by all) "
+            "or handoff (read back by this member's next session) to update your own "
+            "notes; an empty string clears one. Pass message_id to read one own sent "
+            "message in full, including older messages. This does not acknowledge "
+            "inbound messages. Activity and notes are not liveness or authority; "
+            "member labels are configured self-labels, not attestation."
         ),
         "inputSchema": {
             "type": "object",
@@ -30,6 +37,19 @@ TOOLS = [
                 "message_id": {
                     "type": "integer", "minimum": 1, "maximum": MAX_MESSAGE_ID,
                     "description": "Return this member's one sent message in full instead of recent previews.",
+                },
+                "sent_limit": {
+                    "type": "integer", "minimum": 1, "maximum": MAX_STATUS_SENT,
+                    "default": STATUS_SENT_DEFAULT,
+                    "description": "How many recent own sent-message previews to include.",
+                },
+                "focus": {
+                    "type": "string", "maxLength": MAX_FOCUS_BYTES,
+                    "description": "One line: what you are working on, where, and which paths you own.",
+                },
+                "handoff": {
+                    "type": "string", "maxLength": MAX_HANDOFF_BYTES,
+                    "description": "Notes for your own next session: done, open, next.",
                 },
             },
             "additionalProperties": False,
@@ -120,9 +140,12 @@ class McpServer:
     def call_tool(self, name: object, arguments: object) -> dict:
         try:
             if name == "team_status":
-                values = self._arguments(arguments, {"message_id"})
-                if "message_id" in values and values["message_id"] is None:
-                    raise TeamError("message_id must be an integer")
+                values = self._arguments(
+                    arguments, {"message_id", "sent_limit", "focus", "handoff"}
+                )
+                for key, value in values.items():
+                    if value is None:
+                        raise TeamError(f"{key} must not be null")
                 return tool_result(self.team.status(**values))
             if name == "team_send":
                 values = self._arguments(
